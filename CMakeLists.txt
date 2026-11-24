@@ -78,9 +78,15 @@ endif()
 # Qt 6.3 and newer can generate a platform-aware deployment script that
 # copies Qt libraries, plugins, and runtime dependencies beside the app.
 if(QT_VERSION_MAJOR EQUAL 6 AND COMMAND qt_generate_deploy_app_script)
+    set(PHOTOSNAP_QT_DEPLOY_OPTIONS)
+    if(UNIX AND NOT APPLE AND Qt6Core_VERSION VERSION_GREATER_EQUAL "6.10")
+        list(APPEND PHOTOSNAP_QT_DEPLOY_OPTIONS EXCLUDE_PLUGIN_TYPES egldeviceintegrations)
+    endif()
+
     qt_generate_deploy_app_script(
         TARGET photo-snap
         OUTPUT_SCRIPT photo_snap_deploy_script
+        ${PHOTOSNAP_QT_DEPLOY_OPTIONS}
     )
     install(SCRIPT ${photo_snap_deploy_script})
     set(PHOTOSNAP_QT_DEPLOYMENT_API ON CACHE INTERNAL "Qt runtime deployment is configured")

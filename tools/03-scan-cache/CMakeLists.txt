@@ -42,9 +42,15 @@ endif()
 install(TARGETS photo-snap-cache-scanner RUNTIME DESTINATION "${scanner_install_dir}")
 
 if(QT_VERSION_MAJOR EQUAL 6 AND COMMAND qt_generate_deploy_app_script AND NOT APPLE)
+    set(scanner_deploy_options)
+    if(UNIX AND Qt6Core_VERSION VERSION_GREATER_EQUAL "6.10")
+        list(APPEND scanner_deploy_options EXCLUDE_PLUGIN_TYPES egldeviceintegrations)
+    endif()
+
     qt_generate_deploy_app_script(
         TARGET photo-snap-cache-scanner
         OUTPUT_SCRIPT photo_snap_scanner_deploy_script
+        ${scanner_deploy_options}
     )
     install(SCRIPT ${photo_snap_scanner_deploy_script})
 endif()
