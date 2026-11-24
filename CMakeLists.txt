@@ -24,6 +24,8 @@ endif()
 
 add_executable(photo-snap WIN32 MACOSX_BUNDLE
     src/main.cpp
+    src/language.cpp
+    src/language.h
     resources/photosnap.qrc
     ${PHOTOSNAP_PLATFORM_ICON}
     src/mainwindow.cpp

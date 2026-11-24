@@ -21,6 +21,7 @@
 #include "photoview.h"
 #include "cachebrowserwindow.h"
 #include "imagemetadata.h"
+#include "language.h"
 
 #include <QAction>
 #include <QApplication>
@@ -129,6 +130,19 @@ MainWindow::MainWindow(QWidget *parent)
     m_libraryButton->setAutoRaise(true);
     m_libraryButton->setText(tr("Open library"));
     connect(m_libraryButton, &QToolButton::clicked, m_cachedImagesAction, &QAction::trigger);
+    m_languageCombo = new QComboBox(imageTitleBar);
+    m_languageCombo->setToolTip(tr("Language"));
+    for (const QString &language : supportedLanguages())
+        m_languageCombo->addItem(languageName(language), language);
+    const QString language = normalizedLanguage(QSettings().value(QStringLiteral("language"),
+                                                                    QStringLiteral("EN-GB")).toString());
+    m_languageCombo->setCurrentIndex(m_languageCombo->findData(language));
+    connect(m_languageCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index) {
+        const QString selected = m_languageCombo->itemData(index).toString();
+        QSettings().setValue(QStringLiteral("language"), selected);
+        QMessageBox::information(this, tr("Language changed"),
+                                 tr("Restart Photo Snap to apply the language change."));
+    });
     auto *copyButton = new QToolButton(imageTitleBar);
     copyButton->setAutoRaise(true);
     copyButton->setDefaultAction(m_copyAction);
@@ -143,6 +157,7 @@ MainWindow::MainWindow(QWidget *parent)
     imageTitleLayout->addStretch(1);
     imageTitleLayout->addWidget(m_editExifButton);
     imageTitleLayout->addWidget(m_libraryButton);
+    imageTitleLayout->addWidget(m_languageCombo);
     centralLayout->addWidget(imageTitleBar);
     centralLayout->addWidget(m_view, 1);
 

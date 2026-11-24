@@ -17,10 +17,13 @@
  */
 
 #include "mainwindow.h"
+#include "language.h"
 
 #include <QApplication>
 #include <QCommandLineParser>
 #include <QIcon>
+#include <QLocale>
+#include <QSettings>
 
 int main(int argc, char *argv[])
 {
@@ -28,6 +31,22 @@ int main(int argc, char *argv[])
     QCoreApplication::setApplicationName(QStringLiteral("Photo Snap"));
     QCoreApplication::setApplicationVersion(QStringLiteral("1.0.0"));
     QCoreApplication::setOrganizationName(QStringLiteral("Photo Snap"));
+    const QString language = normalizedLanguage(QSettings().value(QStringLiteral("language"),
+                                                                     QStringLiteral("EN-GB")).toString());
+    QLocale locale(QLocale::English, QLocale::UnitedKingdom);
+    if (language == QLatin1String("EN-US"))
+        locale = QLocale(QLocale::English, QLocale::UnitedStates);
+    else if (language == QLatin1String("IT"))
+        locale = QLocale(QLocale::Italian, QLocale::Italy);
+    else if (language == QLatin1String("DE"))
+        locale = QLocale(QLocale::German, QLocale::Germany);
+    else if (language == QLatin1String("FR"))
+        locale = QLocale(QLocale::French, QLocale::France);
+    else if (language == QLatin1String("ES"))
+        locale = QLocale(QLocale::Spanish, QLocale::Spain);
+    QLocale::setDefault(locale);
+    AppTranslator translator(language);
+    app.installTranslator(&translator);
     app.setWindowIcon(QIcon(QStringLiteral(":/icons/photosnap.png")));
 
     QCommandLineParser parser;
