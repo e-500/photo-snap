@@ -40,12 +40,29 @@ jobs:
           install -m 0644 resources/photo-snap.desktop "$package_dir/usr/share/applications/photo-snap.desktop"
           install -m 0644 resources/photosnap.png "$package_dir/usr/share/icons/hicolor/512x512/apps/photosnap.png"
 
-          cat > "$package_dir/DEBIAN/control" <<'CONTROL'
+          shlibdeps_args=(
+            -O
+            "-l$package_dir/usr/bin"
+            -e "$package_dir/usr/bin/photo-snap"
+            -e "$package_dir/usr/bin/photo-snap-cache-scanner"
+          )
+          while IFS= read -r -d '' library; do
+            shlibdeps_args+=(-e "$library")
+          done < <(find "$package_dir/usr/bin" -type f -name '*.so*' -print0)
+          shlibdeps_output="$(dpkg-shlibdeps "${shlibdeps_args[@]}")"
+          runtime_dependencies="${shlibdeps_output#shlibs:Depends=}"
+          if [[ "$runtime_dependencies" == "$shlibdeps_output" || -z "$runtime_dependencies" ]]; then
+            echo "dpkg-shlibdeps did not produce runtime dependencies" >&2
+            exit 1
+          fi
+
+          cat > "$package_dir/DEBIAN/control" <<CONTROL
           Package: photo-snap
           Version: 1.0.0
           Section: graphics
           Priority: optional
           Architecture: amd64
+          Depends: $runtime_dependencies
           Maintainer: Photo Snap Developers
           Description: Organize and browse a local photo archive
            Photo Snap is a cross-platform desktop application for managing a domestic photo archive.
