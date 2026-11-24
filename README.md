@@ -10,6 +10,12 @@ Photo Snap is a completely free, open-source, cross-platform desktop application
 
 No subscription. No cloud library. No reshuffling your archive.
 
+Downloads:
+- [Windows installer](https://github.com/e-500/photo-snap/actions/runs/45400452983/artifacts/14923421359)
+- [MacOS package](https://github.com/e-500/photo-snap/actions/runs/45400399523/artifacts/14924505785)
+- [Linux package](https://github.com/e-500/photo-snap/actions/runs/45405741332/artifacts/14926045728)
+
+
 The interface is available in **English (UK)**, **English (US)**, **Italian**, **German**, **French**, and **Spanish**. Use the language selector in the photo bar; restart Photo Snap to apply a change. English (UK) is the default.
 
 **Platform setup guides and ready-to-install packages are coming soon.** For now, build Photo Snap from source using the instructions below.
