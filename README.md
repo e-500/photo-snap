@@ -57,7 +57,7 @@ Useful shortcuts:
 
 ## Your files stay yours
 
-Photo Snap keeps its cache in a per-user SQLite database named `image-cache.sqlite` under the operating system’s application data directory. It stores paths, metadata, SHA-256 hashes, and 128 × 128 PNG thumbnails, not full copies of the photos. A small local service shares the cache between Photo Snap processes while Photo Snap is running.
+Photo Snap keeps its cache in a per-user SQLite database named `image-cache.sqlite` under the operating system’s application data directory. Use **Settings → Reveal database in file explorer** to open its folder for backup. It stores paths, metadata, SHA-256 hashes, and 128 × 128 PNG thumbnails, not full copies of the photos. A small local service shares the cache between Photo Snap processes while Photo Snap is running.
 
 As a planning estimate, the cache uses about **0.37% of the total photo archive size**. For **1 TB of photos, reserve roughly 4 GB** for previews and metadata so the library has room to run smoothly. Actual cache size varies with the number and type of photos.
 

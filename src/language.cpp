@@ -40,7 +40,9 @@ const QHash<QString, Catalog> &catalogs()
             {"Delete photos permanently?", "Eliminare definitivamente le foto?"},
             {"This will permanently delete %n selected image file(s):\n\n%1\n\nContinue?", "Questo eliminerà definitivamente %n file immagine selezionati:\n\n%1\n\nContinuare?"},
             {"Could not delete file: %1", "Impossibile eliminare il file: %1"}, {"Could not remove cache entry for %1: %2", "Impossibile rimuovere la voce dalla cache per %1: %2"},
-            {"Some photos could not be deleted", "Impossibile eliminare alcune foto"}, {"Language", "Lingua"},
+            {"Some photos could not be deleted", "Impossibile eliminare alcune foto"}, {"Settings", "Impostazioni"},
+            {"Database file: %1", "File database: %1"}, {"Reveal database in file explorer", "Mostra il database nella cartella"},
+            {"Could not open folder", "Impossibile aprire la cartella"}, {"Could not open %1", "Impossibile aprire %1"}, {"Language", "Lingua"},
             {"%1: %2", "%1: %2"}, {"%1: metadata saved, but hash could not be refreshed (%2)", "%1: metadati salvati, ma impossibile aggiornare l'hash (%2)"},
             {"%1: metadata saved, but the library entry could not be updated (%2)", "%1: metadati salvati, ma impossibile aggiornare la voce della raccolta (%2)"},
             {"Stop requested; waiting for the current image to finish…", "Interruzione richiesta; attendo il completamento dell'immagine corrente…"},
@@ -75,6 +77,8 @@ const QHash<QString, Catalog> &catalogs()
             {"Stop requested; waiting for the current image to finish…", "Stopp angefordert; aktuelles Bild wird noch fertiggestellt…"}, {"Scanner exited with code %1.", "Scanner mit Code %1 beendet."}, {"Could not start scanner: %1", "Scanner konnte nicht gestartet werden: %1"},
             {"Photo scan log — 0.0 %", "Foto-Scanprotokoll — 0,0 %"}, {"Photo scan log — %1 %", "Foto-Scanprotokoll — %1 %"},
             {"This photo was found at a new path.\n\nFrom: %1\nTo: %2\n\nRelink this photo and use this folder change for other matching entries? Choosing No aborts this scan.", "Dieses Foto wurde an einem neuen Pfad gefunden.\n\nVon: %1\nNach: %2\n\nFoto neu verknüpfen und die Ordneränderung auf passende Einträge anwenden? Bei Nein wird der Scan abgebrochen."},
+            {"Settings", "Einstellungen"}, {"Database file: %1", "Datenbankdatei: %1"}, {"Reveal database in file explorer", "Datenbank im Datei-Explorer anzeigen"},
+            {"Could not open folder", "Ordner konnte nicht geöffnet werden"}, {"Could not open %1", "%1 konnte nicht geöffnet werden"},
             {"Language", "Sprache"}, {"Restart Photo Snap to apply the language change.", "Starte Photo Snap neu, um die Sprachänderung anzuwenden."}, {"Language changed", "Sprache geändert"}
         }},
         {QStringLiteral("FR"), {
@@ -101,6 +105,8 @@ const QHash<QString, Catalog> &catalogs()
             {"Stop requested; waiting for the current image to finish…", "Arrêt demandé ; attente de la fin de l’image en cours…"}, {"Scanner exited with code %1.", "Le scanner s’est terminé avec le code %1."}, {"Could not start scanner: %1", "Impossible de démarrer le scanner : %1"},
             {"Photo scan log — 0.0 %", "Journal d’analyse des photos — 0,0 %"}, {"Photo scan log — %1 %", "Journal d’analyse des photos — %1 %"},
             {"This photo was found at a new path.\n\nFrom: %1\nTo: %2\n\nRelink this photo and use this folder change for other matching entries? Choosing No aborts this scan.", "Cette photo a été trouvée à un nouvel emplacement.\n\nDe : %1\nÀ : %2\n\nRelier cette photo et appliquer le changement de dossier aux autres entrées correspondantes ? Choisir Non interrompra l’analyse."},
+            {"Settings", "Paramètres"}, {"Database file: %1", "Fichier de base de données : %1"}, {"Reveal database in file explorer", "Afficher la base de données dans le dossier"},
+            {"Could not open folder", "Impossible d’ouvrir le dossier"}, {"Could not open %1", "Impossible d’ouvrir %1"},
             {"Language", "Langue"}, {"Restart Photo Snap to apply the language change.", "Redémarrez Photo Snap pour appliquer le changement de langue."}, {"Language changed", "Langue modifiée"}
         }},
         {QStringLiteral("ES"), {
@@ -122,6 +128,8 @@ const QHash<QString, Catalog> &catalogs()
             {"Stop requested; waiting for the current image to finish…", "Se solicitó detener; esperando a que termine la imagen actual…"}, {"Scanner exited with code %1.", "El escáner terminó con el código %1."}, {"Could not start scanner: %1", "No se pudo iniciar el escáner: %1"},
             {"Photo scan log — 0.0 %", "Registro de análisis de fotos — 0,0 %"}, {"Photo scan log — %1 %", "Registro de análisis de fotos — %1 %"},
             {"This photo was found at a new path.\n\nFrom: %1\nTo: %2\n\nRelink this photo and use this folder change for other matching entries? Choosing No aborts this scan.", "Se encontró esta foto en una nueva ruta.\n\nDe: %1\nA: %2\n\n¿Volver a vincularla y aplicar el cambio de carpeta a las demás entradas coincidentes? Si eliges No, se cancelará el análisis."},
+            {"Settings", "Ajustes"}, {"Database file: %1", "Archivo de base de datos: %1"}, {"Reveal database in file explorer", "Mostrar la base de datos en la carpeta"},
+            {"Could not open folder", "No se pudo abrir la carpeta"}, {"Could not open %1", "No se pudo abrir %1"},
             {"Language", "Idioma"}, {"Restart Photo Snap to apply the language change.", "Reinicia Photo Snap para aplicar el cambio de idioma."}, {"Language changed", "Idioma cambiado"}
         }}
     };

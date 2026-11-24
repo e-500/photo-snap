@@ -32,6 +32,7 @@
 #include <QDir>
 #include <QDateTime>
 #include <QDateTimeEdit>
+#include <QDesktopServices>
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QDebug>
@@ -50,14 +51,17 @@
 #include <QMessageBox>
 #include <QPixmap>
 #include <QPainter>
+#include <QPainterPath>
 #include <QPalette>
 #include <QPushButton>
+#include <QStandardPaths>
 #include <QStatusBar>
 #include <QStyle>
 #include <QSettings>
 #include <QToolBar>
 #include <QTransform>
 #include <QToolButton>
+#include <QtMath>
 #include <QUrl>
 #include <QHBoxLayout>
 #include <QVBoxLayout>
@@ -98,6 +102,32 @@ QIcon editTimestampIcon()
     return QIcon(pixmap);
 }
 
+QIcon settingsIcon()
+{
+    QPixmap pixmap(20, 20);
+    pixmap.fill(Qt::transparent);
+    QPainter painter(&pixmap);
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    QPolygonF gear;
+    for (int tooth = 0; tooth < 8; ++tooth) {
+        const qreal base = tooth * 45.0;
+        for (const auto &point : {qMakePair(base, 7.0), qMakePair(base + 7.0, 9.2),
+                                  qMakePair(base + 20.5, 9.2), qMakePair(base + 27.5, 7.0)}) {
+            const qreal radians = qDegreesToRadians(point.first);
+            gear << QPointF(10.0 + point.second * qCos(radians),
+                            10.0 + point.second * qSin(radians));
+        }
+    }
+    QPainterPath shape;
+    shape.setFillRule(Qt::OddEvenFill);
+    shape.addPolygon(gear);
+    shape.addEllipse(QPointF(10.0, 10.0), 3.0, 3.0);
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(QApplication::palette().color(QPalette::ButtonText));
+    painter.drawPath(shape);
+    return QIcon(pixmap);
+}
+
 } // namespace
 
 MainWindow::MainWindow(QWidget *parent)
@@ -130,19 +160,12 @@ MainWindow::MainWindow(QWidget *parent)
     m_libraryButton->setAutoRaise(true);
     m_libraryButton->setText(tr("Open library"));
     connect(m_libraryButton, &QToolButton::clicked, m_cachedImagesAction, &QAction::trigger);
-    m_languageCombo = new QComboBox(imageTitleBar);
-    m_languageCombo->setToolTip(tr("Language"));
-    for (const QString &language : supportedLanguages())
-        m_languageCombo->addItem(languageName(language), language);
-    const QString language = normalizedLanguage(QSettings().value(QStringLiteral("language"),
-                                                                    QStringLiteral("EN-GB")).toString());
-    m_languageCombo->setCurrentIndex(m_languageCombo->findData(language));
-    connect(m_languageCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index) {
-        const QString selected = m_languageCombo->itemData(index).toString();
-        QSettings().setValue(QStringLiteral("language"), selected);
-        QMessageBox::information(this, tr("Language changed"),
-                                 tr("Restart Photo Snap to apply the language change."));
-    });
+    m_settingsButton = new QToolButton(imageTitleBar);
+    m_settingsButton->setAutoRaise(true);
+    m_settingsButton->setIcon(settingsIcon());
+    m_settingsButton->setText(tr("Settings"));
+    m_settingsButton->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    connect(m_settingsButton, &QToolButton::clicked, this, &MainWindow::openSettings);
     auto *copyButton = new QToolButton(imageTitleBar);
     copyButton->setAutoRaise(true);
     copyButton->setDefaultAction(m_copyAction);
@@ -154,10 +177,10 @@ MainWindow::MainWindow(QWidget *parent)
     rotateButton->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     imageTitleLayout->addWidget(rotateButton);
     imageTitleLayout->addWidget(copyButton);
-    imageTitleLayout->addStretch(1);
     imageTitleLayout->addWidget(m_editExifButton);
+    imageTitleLayout->addStretch(1);
+    imageTitleLayout->addWidget(m_settingsButton);
     imageTitleLayout->addWidget(m_libraryButton);
-    imageTitleLayout->addWidget(m_languageCombo);
     centralLayout->addWidget(imageTitleBar);
     centralLayout->addWidget(m_view, 1);
 
@@ -201,6 +224,54 @@ MainWindow::MainWindow(QWidget *parent)
             openImage(paths.constFirst());
     });
     updateNavigationActions();
+}
+
+void MainWindow::openSettings()
+{
+    QDialog dialog(this);
+    dialog.setWindowTitle(tr("Settings"));
+    auto *layout = new QVBoxLayout(&dialog);
+    auto *form = new QFormLayout;
+    auto *languageCombo = new QComboBox(&dialog);
+    for (const QString &language : supportedLanguages())
+        languageCombo->addItem(languageName(language), language);
+    const QString currentLanguage = normalizedLanguage(
+        QSettings().value(QStringLiteral("language"), QStringLiteral("EN-GB")).toString());
+    languageCombo->setCurrentIndex(languageCombo->findData(currentLanguage));
+    form->addRow(tr("Language"), languageCombo);
+    layout->addLayout(form);
+
+    auto *databasePathLabel = new QLabel(
+        tr("Database file: %1").arg(QDir(QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation))
+                                         .filePath(QStringLiteral("image-cache.sqlite"))), &dialog);
+    databasePathLabel->setTextInteractionFlags(Qt::TextSelectableByMouse | Qt::TextSelectableByKeyboard);
+    databasePathLabel->setWordWrap(true);
+    layout->addWidget(databasePathLabel);
+    auto *revealDatabaseButton = new QPushButton(tr("Reveal database in file explorer"), &dialog);
+    layout->addWidget(revealDatabaseButton);
+    connect(revealDatabaseButton, &QPushButton::clicked, &dialog, [this]() {
+        ImageCache &cache = ImageCache::instance();
+        if (!cache.initialize()) {
+            QMessageBox::warning(this, tr("Image cache unavailable"), cache.errorString());
+            return;
+        }
+        const QString directory = QFileInfo(cache.databasePath()).absolutePath();
+        if (!QDesktopServices::openUrl(QUrl::fromLocalFile(directory)))
+            QMessageBox::warning(this, tr("Could not open folder"), tr("Could not open %1").arg(directory));
+    });
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    layout->addWidget(buttons);
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    if (dialog.exec() != QDialog::Accepted)
+        return;
+
+    const QString selectedLanguage = languageCombo->currentData().toString();
+    if (selectedLanguage != currentLanguage) {
+        QSettings().setValue(QStringLiteral("language"), selectedLanguage);
+        QMessageBox::information(this, tr("Language changed"),
+                                 tr("Restart Photo Snap to apply the language change."));
+    }
 }
 
 void MainWindow::createActions()

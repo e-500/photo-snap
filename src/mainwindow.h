@@ -27,7 +27,6 @@
 class QAction;
 class CacheBrowserWindow;
 class QLabel;
-class QComboBox;
 class PhotoView;
 class QToolBar;
 class QToolButton;
@@ -51,6 +50,7 @@ private slots:
     void editExif();
     void toggleFullScreen();
     void updateZoomLabel(qreal factor);
+    void openSettings();
 
 private:
     void createActions();
@@ -74,7 +74,7 @@ private:
     QToolBar *m_toolbar = nullptr;
     QToolButton *m_editExifButton = nullptr;
     QToolButton *m_libraryButton = nullptr;
-    QComboBox *m_languageCombo = nullptr;
+    QToolButton *m_settingsButton = nullptr;
     CacheBrowserWindow *m_cacheBrowser = nullptr;
     QString m_currentPath;
     QPixmap m_originalPixmap;
