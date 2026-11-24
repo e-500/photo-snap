@@ -12,9 +12,9 @@ AppPublisher={#AppPublisher}
 DefaultDirName={autopf}\{#AppName}
 DefaultGroupName={#AppName}
 UninstallDisplayIcon={app}\photo-snap.exe
-OutputDir=output
+OutputDir=..\output
 OutputBaseFilename=Photo-Snap-Setup
-SetupIconFile=resources\photosnap.ico
+SetupIconFile=..\resources\photosnap.ico
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
@@ -26,8 +26,8 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription: "Additional icons:"
 
 [Files]
-Source: "output\bin\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs
-Source: "resources\photosnap.ico"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\output\bin\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs
+Source: "..\resources\photosnap.ico"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{autoprograms}\{#AppName}"; Filename: "{app}\photo-snap.exe"; IconFilename: "{app}\photosnap.ico"
