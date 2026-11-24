@@ -38,6 +38,7 @@ echo 'Configuring Photo Snap for Release...'
 cmake -S "$project_root" -B "$build_dir" \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_INSTALL_BINDIR=bin \
+    -DQT_DEPLOY_USE_PATCHELF=ON \
     "-DCMAKE_RUNTIME_OUTPUT_DIRECTORY=$build_dir/runtime" \
     "-DCMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE=$build_dir/runtime" \
     "${qt_cmake_args[@]}"
