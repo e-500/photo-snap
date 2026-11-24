@@ -41,6 +41,7 @@ struct ImageMetadata
     double gpsLatitude = 0.0;
     double gpsLongitude = 0.0;
     QByteArray thumbnailPng;
+    QByteArray contentHash;
 };
 
 enum class ImageDateMode : quint8
@@ -68,7 +69,11 @@ public:
     QStringList cachedImageYearsOrdered(ImageDateMode dateMode = ImageDateMode::ShootingDate);
     QStringList cachedImageMonthsOrdered(const QString &year, ImageDateMode dateMode);
     QStringList cachedImagePaths();
+    QStringList cachedImagePathsWithoutHash();
     bool addImageIfNew(const ImageMetadata &image);
+    QString cachedImagePathByHash(const QByteArray &hash);
+    bool updateImageHash(const QString &path, const QByteArray &hash);
+    bool relinkImage(const QString &oldPath, const ImageMetadata &image);
     bool hideImage(const QString &path);
     bool unhideImage(const QString &path);
     bool deleteImageEntry(const QString &path);

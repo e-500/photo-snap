@@ -45,6 +45,10 @@ constexpr quint8 UpdateImageDateRequest = 7;
 constexpr quint8 ListImageYearsRequest = 8;
 constexpr quint8 ListImageMonthsRequest = 9;
 constexpr quint8 ListImagesByMonthRequest = 10;
+constexpr quint8 FindHashRequest = 11;
+constexpr quint8 RelinkImageRequest = 12;
+constexpr quint8 UpdateHashRequest = 13;
+constexpr quint8 ListUnhashedPathsRequest = 14;
 constexpr quint32 MaximumResponseSize = 256u * 1024u * 1024u;
 
 QByteArray encodeImageList(const QVector<ImageMetadata> &images)
@@ -272,6 +276,7 @@ bool ImageCache::openDatabase()
             "modified_ms INTEGER NOT NULL, "
             "thumbnail_png BLOB, "
             "thumbnail_version INTEGER NOT NULL DEFAULT 0, "
+            "content_hash BLOB, "
             "is_hidden INTEGER NOT NULL DEFAULT 0, "
             "cached_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"))) {
         m_error = query.lastError().text();
@@ -284,6 +289,7 @@ bool ImageCache::openDatabase()
     bool hasHiddenColumn = false;
     bool hasCreationDateTimeColumn = false;
     bool hasUpdateDateTimeColumn = false;
+    bool hasContentHashColumn = false;
     if (!query.exec(QStringLiteral("PRAGMA table_info(image_cache)"))) {
         m_error = query.lastError().text();
         m_databaseHolder->database.close();
@@ -300,6 +306,8 @@ bool ImageCache::openDatabase()
             hasCreationDateTimeColumn = true;
         else if (query.value(1).toString() == QStringLiteral("update_datetime"))
             hasUpdateDateTimeColumn = true;
+        else if (query.value(1).toString() == QStringLiteral("content_hash"))
+            hasContentHashColumn = true;
     }
     if (!hasThumbnailColumn && !query.exec(QStringLiteral("ALTER TABLE image_cache ADD COLUMN thumbnail_png BLOB"))) {
         m_error = query.lastError().text();
@@ -325,6 +333,17 @@ bool ImageCache::openDatabase()
     }
     if (!hasUpdateDateTimeColumn &&
         !query.exec(QStringLiteral("ALTER TABLE image_cache ADD COLUMN update_datetime TEXT"))) {
+        m_error = query.lastError().text();
+        m_databaseHolder->database.close();
+        return false;
+    }
+    if (!hasContentHashColumn &&
+        !query.exec(QStringLiteral("ALTER TABLE image_cache ADD COLUMN content_hash BLOB"))) {
+        m_error = query.lastError().text();
+        m_databaseHolder->database.close();
+        return false;
+    }
+    if (!query.exec(QStringLiteral("CREATE INDEX IF NOT EXISTS image_cache_content_hash_idx ON image_cache(content_hash)"))) {
         m_error = query.lastError().text();
         m_databaseHolder->database.close();
         return false;
@@ -550,6 +569,45 @@ QStringList ImageCache::cachedImagePaths()
     return paths;
 }
 
+QStringList ImageCache::cachedImagePathsWithoutHash()
+{
+    if (!m_initialized && !initialize())
+        return {};
+    if (!m_isServer) {
+        QByteArray request;
+        QDataStream stream(&request, QIODevice::WriteOnly);
+        stream << ListUnhashedPathsRequest;
+        QByteArray payload;
+        if (!sendRequestToService(request, &payload)) return {};
+        QDataStream response(payload);
+        bool success = false;
+        QString error;
+        quint32 count = 0;
+        response >> success >> error >> count;
+        if (!success || count > 10000000) {
+            m_error = success ? QStringLiteral("The cache service returned an invalid path count.") : error;
+            return {};
+        }
+        QStringList paths;
+        for (quint32 i = 0; i < count; ++i) {
+            QString path;
+            response >> path;
+            paths.append(std::move(path));
+        }
+        m_error.clear();
+        return paths;
+    }
+    QStringList paths;
+    QSqlQuery query(m_databaseHolder->database);
+    if (!query.exec(QStringLiteral("SELECT path FROM image_cache WHERE content_hash IS NULL OR content_hash = X''"))) {
+        m_error = query.lastError().text();
+        return paths;
+    }
+    while (query.next()) paths.append(query.value(0).toString());
+    m_error.clear();
+    return paths;
+}
+
 bool ImageCache::addImageIfNew(const ImageMetadata &image)
 {
     if (!m_initialized && !initialize())
@@ -565,7 +623,7 @@ bool ImageCache::addImageIfNew(const ImageMetadata &image)
         requestStream << AddImageRequest << image.path << image.sizeBytes << image.format << image.shootingDateTime
                      << image.creationDateTime << image.updateDateTime
                      << image.hasGpsPosition << image.gpsLatitude << image.gpsLongitude << image.thumbnailPng
-                     << image.modifiedMs;
+                     << image.modifiedMs << image.contentHash;
         QByteArray payload;
         if (!sendRequestToService(request, &payload))
             return false;
@@ -584,8 +642,8 @@ bool ImageCache::addImageIfNew(const ImageMetadata &image)
 
     QSqlQuery query(m_databaseHolder->database);
     query.prepare(QStringLiteral(
-        "INSERT OR IGNORE INTO image_cache (path, size_bytes, format, shooting_datetime, creation_datetime, update_datetime, gps_latitude, gps_longitude, modified_ms, thumbnail_png, thumbnail_version, cached_at) "
-        "VALUES (:path, :size, :format, :shooting_datetime, :creation_datetime, :update_datetime, :latitude, :longitude, :modified_ms, :thumbnail, 1, CURRENT_TIMESTAMP)"));
+        "INSERT OR IGNORE INTO image_cache (path, size_bytes, format, shooting_datetime, creation_datetime, update_datetime, gps_latitude, gps_longitude, modified_ms, thumbnail_png, thumbnail_version, content_hash, cached_at) "
+        "VALUES (:path, :size, :format, :shooting_datetime, :creation_datetime, :update_datetime, :latitude, :longitude, :modified_ms, :thumbnail, 1, :hash, CURRENT_TIMESTAMP)"));
     query.bindValue(QStringLiteral(":path"), image.path);
     query.bindValue(QStringLiteral(":size"), image.sizeBytes);
     query.bindValue(QStringLiteral(":format"), image.format);
@@ -596,6 +654,115 @@ bool ImageCache::addImageIfNew(const ImageMetadata &image)
     query.bindValue(QStringLiteral(":longitude"), image.hasGpsPosition ? QVariant(image.gpsLongitude) : QVariant());
     query.bindValue(QStringLiteral(":modified_ms"), image.modifiedMs);
     query.bindValue(QStringLiteral(":thumbnail"), image.thumbnailPng);
+    query.bindValue(QStringLiteral(":hash"), image.contentHash.isEmpty() ? QVariant() : QVariant(image.contentHash));
+    if (!query.exec()) {
+        m_error = query.lastError().text();
+        return false;
+    }
+    m_error.clear();
+    return query.numRowsAffected() > 0;
+}
+
+QString ImageCache::cachedImagePathByHash(const QByteArray &hash)
+{
+    if (hash.isEmpty() || (!m_initialized && !initialize()))
+        return {};
+    if (!m_isServer) {
+        QByteArray request;
+        QDataStream stream(&request, QIODevice::WriteOnly);
+        stream << FindHashRequest << hash;
+        QByteArray payload;
+        if (!sendRequestToService(request, &payload))
+            return {};
+        QDataStream response(payload);
+        bool success = false;
+        QString error;
+        QString path;
+        response >> success >> error >> path;
+        m_error = success ? QString() : error;
+        return success ? path : QString();
+    }
+    QSqlQuery query(m_databaseHolder->database);
+    query.prepare(QStringLiteral("SELECT path FROM image_cache WHERE content_hash = :hash LIMIT 1"));
+    query.bindValue(QStringLiteral(":hash"), hash);
+    if (!query.exec()) {
+        m_error = query.lastError().text();
+        return {};
+    }
+    m_error.clear();
+    return query.next() ? query.value(0).toString() : QString();
+}
+
+bool ImageCache::updateImageHash(const QString &path, const QByteArray &hash)
+{
+    if (path.isEmpty() || hash.isEmpty() || (!m_initialized && !initialize()))
+        return false;
+    if (!m_isServer) {
+        QByteArray request;
+        QDataStream stream(&request, QIODevice::WriteOnly);
+        stream << UpdateHashRequest << path << hash;
+        QByteArray payload;
+        if (!sendRequestToService(request, &payload))
+            return false;
+        QDataStream response(payload);
+        bool success = false;
+        QString error;
+        bool changed = false;
+        response >> success >> error >> changed;
+        m_error = success ? QString() : error;
+        return success;
+    }
+    QSqlQuery query(m_databaseHolder->database);
+    query.prepare(QStringLiteral("UPDATE image_cache SET content_hash=:hash WHERE path=:path AND content_hash IS NULL"));
+    query.bindValue(QStringLiteral(":hash"), hash);
+    query.bindValue(QStringLiteral(":path"), path);
+    if (!query.exec()) {
+        m_error = query.lastError().text();
+        return false;
+    }
+    m_error.clear();
+    return true;
+}
+
+bool ImageCache::relinkImage(const QString &oldPath, const ImageMetadata &image)
+{
+    if (oldPath.isEmpty() || image.path.isEmpty() || image.thumbnailPng.isEmpty() || (!m_initialized && !initialize()))
+        return false;
+    if (!m_isServer) {
+        QByteArray request;
+        QDataStream stream(&request, QIODevice::WriteOnly);
+        stream << RelinkImageRequest << oldPath << image.path << image.sizeBytes << image.format
+               << image.shootingDateTime << image.creationDateTime << image.updateDateTime
+               << image.hasGpsPosition << image.gpsLatitude << image.gpsLongitude << image.modifiedMs
+               << image.thumbnailPng << image.contentHash;
+        QByteArray payload;
+        if (!sendRequestToService(request, &payload))
+            return false;
+        QDataStream response(payload);
+        bool success = false;
+        QString error;
+        bool changed = false;
+        response >> success >> error >> changed;
+        m_error = success ? QString() : error;
+        return success && changed;
+    }
+    QSqlQuery query(m_databaseHolder->database);
+    query.prepare(QStringLiteral("UPDATE image_cache SET path=:new_path, size_bytes=:size, format=:format, "
+        "shooting_datetime=:shooting, creation_datetime=:creation, update_datetime=:updated, "
+        "gps_latitude=:latitude, gps_longitude=:longitude, modified_ms=:modified, thumbnail_png=:thumbnail, "
+        "thumbnail_version=1, content_hash=:hash, cached_at=CURRENT_TIMESTAMP WHERE path=:old_path"));
+    query.bindValue(QStringLiteral(":new_path"), image.path);
+    query.bindValue(QStringLiteral(":size"), image.sizeBytes);
+    query.bindValue(QStringLiteral(":format"), image.format);
+    query.bindValue(QStringLiteral(":shooting"), image.shootingDateTime.isEmpty() ? QVariant() : QVariant(image.shootingDateTime));
+    query.bindValue(QStringLiteral(":creation"), image.creationDateTime.isEmpty() ? QVariant() : QVariant(image.creationDateTime));
+    query.bindValue(QStringLiteral(":updated"), image.updateDateTime.isEmpty() ? QVariant() : QVariant(image.updateDateTime));
+    query.bindValue(QStringLiteral(":latitude"), image.hasGpsPosition ? QVariant(image.gpsLatitude) : QVariant());
+    query.bindValue(QStringLiteral(":longitude"), image.hasGpsPosition ? QVariant(image.gpsLongitude) : QVariant());
+    query.bindValue(QStringLiteral(":modified"), image.modifiedMs);
+    query.bindValue(QStringLiteral(":thumbnail"), image.thumbnailPng);
+    query.bindValue(QStringLiteral(":hash"), image.contentHash);
+    query.bindValue(QStringLiteral(":old_path"), oldPath);
     if (!query.exec()) {
         m_error = query.lastError().text();
         return false;
@@ -968,12 +1135,21 @@ void ImageCache::handleClient(QLocalSocket *socket, const QByteArray &request)
                 paths.append(query.value(0).toString());
             payload = encodePaths(paths);
         }
+    } else if (operation == ListUnhashedPathsRequest) {
+        QStringList paths;
+        QSqlQuery query(m_databaseHolder->database);
+        if (!query.exec(QStringLiteral("SELECT path FROM image_cache WHERE content_hash IS NULL OR content_hash = X''")))
+            payload = encodeError(query.lastError().text());
+        else {
+            while (query.next()) paths.append(query.value(0).toString());
+            payload = encodePaths(paths);
+        }
     } else if (operation == AddImageRequest) {
         ImageMetadata image;
         requestStream >> image.path >> image.sizeBytes >> image.format >> image.shootingDateTime
                       >> image.creationDateTime >> image.updateDateTime
                       >> image.hasGpsPosition >> image.gpsLatitude >> image.gpsLongitude >> image.thumbnailPng
-                      >> image.modifiedMs;
+                      >> image.modifiedMs >> image.contentHash;
         bool inserted = false;
         QString error;
         if (requestStream.status() != QDataStream::Ok || image.path.isEmpty() || image.thumbnailPng.isEmpty()) {
@@ -981,8 +1157,8 @@ void ImageCache::handleClient(QLocalSocket *socket, const QByteArray &request)
         } else {
             QSqlQuery query(m_databaseHolder->database);
             query.prepare(QStringLiteral(
-                "INSERT OR IGNORE INTO image_cache (path, size_bytes, format, shooting_datetime, creation_datetime, update_datetime, gps_latitude, gps_longitude, modified_ms, thumbnail_png, thumbnail_version, cached_at) "
-                "VALUES (:path, :size, :format, :shooting_datetime, :creation_datetime, :update_datetime, :latitude, :longitude, :modified_ms, :thumbnail, 1, CURRENT_TIMESTAMP)"));
+                "INSERT OR IGNORE INTO image_cache (path, size_bytes, format, shooting_datetime, creation_datetime, update_datetime, gps_latitude, gps_longitude, modified_ms, thumbnail_png, thumbnail_version, content_hash, cached_at) "
+                "VALUES (:path, :size, :format, :shooting_datetime, :creation_datetime, :update_datetime, :latitude, :longitude, :modified_ms, :thumbnail, 1, :hash, CURRENT_TIMESTAMP)"));
             query.bindValue(QStringLiteral(":path"), image.path);
             query.bindValue(QStringLiteral(":size"), image.sizeBytes);
             query.bindValue(QStringLiteral(":format"), image.format);
@@ -993,6 +1169,7 @@ void ImageCache::handleClient(QLocalSocket *socket, const QByteArray &request)
             query.bindValue(QStringLiteral(":longitude"), image.hasGpsPosition ? QVariant(image.gpsLongitude) : QVariant());
             query.bindValue(QStringLiteral(":modified_ms"), image.modifiedMs);
             query.bindValue(QStringLiteral(":thumbnail"), image.thumbnailPng);
+            query.bindValue(QStringLiteral(":hash"), image.contentHash.isEmpty() ? QVariant() : QVariant(image.contentHash));
             if (query.exec())
                 inserted = query.numRowsAffected() > 0;
             else
@@ -1000,6 +1177,81 @@ void ImageCache::handleClient(QLocalSocket *socket, const QByteArray &request)
         }
 
         payload = encodeAdded(inserted, error);
+    } else if (operation == FindHashRequest) {
+        QByteArray hash;
+        requestStream >> hash;
+        QString path;
+        QString error;
+        if (requestStream.status() != QDataStream::Ok || hash.isEmpty()) {
+            error = QStringLiteral("The scanner sent an invalid image hash.");
+        } else {
+            QSqlQuery query(m_databaseHolder->database);
+            query.prepare(QStringLiteral("SELECT path FROM image_cache WHERE content_hash=:hash LIMIT 1"));
+            query.bindValue(QStringLiteral(":hash"), hash);
+            if (query.exec()) {
+                if (query.next()) path = query.value(0).toString();
+            } else error = query.lastError().text();
+        }
+        QByteArray result;
+        QDataStream response(&result, QIODevice::WriteOnly);
+        response << error.isEmpty() << error << path;
+        payload = result;
+    } else if (operation == RelinkImageRequest) {
+        ImageMetadata image;
+        QString oldPath;
+        requestStream >> oldPath >> image.path >> image.sizeBytes >> image.format
+                      >> image.shootingDateTime >> image.creationDateTime >> image.updateDateTime
+                      >> image.hasGpsPosition >> image.gpsLatitude >> image.gpsLongitude >> image.modifiedMs
+                      >> image.thumbnailPng >> image.contentHash;
+        bool changed = false;
+        QString error;
+        if (requestStream.status() != QDataStream::Ok || oldPath.isEmpty() || image.path.isEmpty() || image.thumbnailPng.isEmpty()) {
+            error = QStringLiteral("The scanner sent invalid relink metadata.");
+        } else {
+            QSqlQuery query(m_databaseHolder->database);
+            query.prepare(QStringLiteral("UPDATE image_cache SET path=:new_path, size_bytes=:size, format=:format, "
+                "shooting_datetime=:shooting, creation_datetime=:creation, update_datetime=:updated, "
+                "gps_latitude=:latitude, gps_longitude=:longitude, modified_ms=:modified, thumbnail_png=:thumbnail, "
+                "thumbnail_version=1, content_hash=:hash, cached_at=CURRENT_TIMESTAMP WHERE path=:old_path"));
+            query.bindValue(QStringLiteral(":new_path"), image.path);
+            query.bindValue(QStringLiteral(":size"), image.sizeBytes);
+            query.bindValue(QStringLiteral(":format"), image.format);
+            query.bindValue(QStringLiteral(":shooting"), image.shootingDateTime.isEmpty() ? QVariant() : QVariant(image.shootingDateTime));
+            query.bindValue(QStringLiteral(":creation"), image.creationDateTime.isEmpty() ? QVariant() : QVariant(image.creationDateTime));
+            query.bindValue(QStringLiteral(":updated"), image.updateDateTime.isEmpty() ? QVariant() : QVariant(image.updateDateTime));
+            query.bindValue(QStringLiteral(":latitude"), image.hasGpsPosition ? QVariant(image.gpsLatitude) : QVariant());
+            query.bindValue(QStringLiteral(":longitude"), image.hasGpsPosition ? QVariant(image.gpsLongitude) : QVariant());
+            query.bindValue(QStringLiteral(":modified"), image.modifiedMs);
+            query.bindValue(QStringLiteral(":thumbnail"), image.thumbnailPng);
+            query.bindValue(QStringLiteral(":hash"), image.contentHash);
+            query.bindValue(QStringLiteral(":old_path"), oldPath);
+            if (query.exec()) changed = query.numRowsAffected() > 0;
+            else error = query.lastError().text();
+        }
+        QByteArray result;
+        QDataStream response(&result, QIODevice::WriteOnly);
+        response << error.isEmpty() << error << changed;
+        payload = result;
+    } else if (operation == UpdateHashRequest) {
+        QString path;
+        QByteArray hash;
+        requestStream >> path >> hash;
+        QString error;
+        bool changed = false;
+        if (requestStream.status() != QDataStream::Ok || path.isEmpty() || hash.isEmpty()) {
+            error = QStringLiteral("The scanner sent an invalid image hash update.");
+        } else {
+            QSqlQuery query(m_databaseHolder->database);
+            query.prepare(QStringLiteral("UPDATE image_cache SET content_hash=:hash WHERE path=:path AND content_hash IS NULL"));
+            query.bindValue(QStringLiteral(":hash"), hash);
+            query.bindValue(QStringLiteral(":path"), path);
+            if (query.exec()) changed = query.numRowsAffected() > 0;
+            else error = query.lastError().text();
+        }
+        QByteArray result;
+        QDataStream response(&result, QIODevice::WriteOnly);
+        response << error.isEmpty() << error << changed;
+        payload = result;
     } else if (operation == UpdateImageDateRequest) {
         QString path;
         QString dateTime;

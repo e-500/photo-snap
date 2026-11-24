@@ -24,10 +24,16 @@
 #include <QDirIterator>
 #include <QFileInfo>
 #include <QImageReader>
+#include <QCryptographicHash>
+#include <QFile>
+#include <QHash>
 #include <QSet>
 #include <QTextStream>
 #include <QCommandLineParser>
 #include <QThread>
+
+#include <future>
+#include <utility>
 
 #ifdef Q_OS_WIN
 #include <windows.h>
@@ -53,6 +59,68 @@ bool isWithinRoot(const QString &path, const QString &rootKey)
     if (!prefix.endsWith(QLatin1Char('/')))
         prefix.append(QLatin1Char('/'));
     return pathKey(path).startsWith(prefix);
+}
+
+QStringList readControlCommands(QString *pending);
+
+QByteArray hashFile(const QString &path)
+{
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly))
+        return {};
+    QCryptographicHash hash(QCryptographicHash::Sha256);
+    while (!file.atEnd()) {
+        const QByteArray chunk = file.read(1024 * 1024);
+        if (chunk.isEmpty() && file.error() != QFileDevice::NoError)
+            return {};
+        hash.addData(chunk);
+    }
+    return hash.result();
+}
+
+QPair<QString, QString> inferPrefixes(const QString &oldPath, const QString &newPath)
+{
+    QStringList oldParts = QDir::fromNativeSeparators(oldPath).split(QLatin1Char('/'), Qt::SkipEmptyParts);
+    QStringList newParts = QDir::fromNativeSeparators(newPath).split(QLatin1Char('/'), Qt::SkipEmptyParts);
+    if (!oldParts.isEmpty()) oldParts.removeLast();
+    if (!newParts.isEmpty()) newParts.removeLast();
+    int shared = 0;
+    while (shared < oldParts.size() && shared < newParts.size() &&
+           pathKey(oldParts.at(oldParts.size() - shared - 1)) == pathKey(newParts.at(newParts.size() - shared - 1)))
+        ++shared;
+    const QString oldPrefix = oldParts.mid(0, oldParts.size() - shared).join(QLatin1Char('/'));
+    const QString newPrefix = newParts.mid(0, newParts.size() - shared).join(QLatin1Char('/'));
+    return {oldPrefix, newPrefix};
+}
+
+QString replacePrefix(const QString &path, const QString &from, const QString &to)
+{
+    if (from.isEmpty())
+        return {};
+    const QString normalized = QDir::fromNativeSeparators(path);
+    const QString normalizedFrom = QDir::fromNativeSeparators(from);
+    if (pathKey(normalized) != pathKey(normalizedFrom) &&
+        !pathKey(normalized).startsWith(pathKey(normalizedFrom) + QLatin1Char('/')))
+        return {};
+    return QDir::fromNativeSeparators(to) + normalized.mid(normalizedFrom.size());
+}
+
+bool waitForRelinkDecision(QString *stopped, QString *pending, QTextStream &output)
+{
+    while (true) {
+        for (const QString &command : readControlCommands(pending)) {
+            if (command == QStringLiteral("relink")) {
+                output << "Relink accepted.\n" << Qt::flush;
+                return true;
+            }
+            if (command == QStringLiteral("abort") || command == QStringLiteral("stop")) {
+                *stopped = QStringLiteral("stop");
+                output << "Relink declined; stopping scan.\n" << Qt::flush;
+                return false;
+            }
+        }
+        QThread::msleep(100);
+    }
 }
 
 QStringList readControlCommands(QString *pending)
@@ -157,9 +225,13 @@ int main(int argc, char *argv[])
     }
 
     QSet<QString> knownPaths;
+    QHash<QString, QString> originalPathByKey;
     const QStringList cachedPaths = cache.cachedImagePaths();
-    for (const QString &path : cachedPaths)
+    for (const QString &path : cachedPaths) {
         knownPaths.insert(pathKey(path));
+        originalPathByKey.insert(pathKey(path), path);
+    }
+    QVector<QPair<QString, QString>> prefixChanges;
 
     quint64 scanned = 0;
     quint64 added = 0;
@@ -168,11 +240,29 @@ int main(int argc, char *argv[])
     quint64 failed = 0;
     quint64 removed = 0;
     quint64 restored = 0;
+    QStringList staleCandidates;
     bool paused = false;
     QString stopped;
     QString pendingCommands;
     QTextStream output(stdout);
     bool canContinue = true;
+    const QStringList unhashedPaths = cache.cachedImagePathsWithoutHash();
+    quint64 hashesBackfilled = 0;
+    for (const QString &path : unhashedPaths) {
+        if (!waitWhilePaused(&paused, &stopped, &pendingCommands, output)) {
+            canContinue = false;
+            break;
+        }
+        if (!QFileInfo::exists(path))
+            continue;
+        const QByteArray hash = hashFile(path);
+        if (!hash.isEmpty() && cache.updateImageHash(path, hash)) {
+            ++hashesBackfilled;
+            output << "Indexed existing photo hash: " << path << '\n' << Qt::flush;
+        }
+    }
+    if (hashesBackfilled > 0)
+        output << "Indexed " << hashesBackfilled << " existing photo hash(es).\n" << Qt::flush;
     for (const QString &cachedPath : cachedPaths) {
         if (!waitWhilePaused(&paused, &stopped, &pendingCommands, output)) {
             canContinue = false;
@@ -181,14 +271,7 @@ int main(int argc, char *argv[])
         if (!isWithinRoot(cachedPath, rootKey))
             continue;
         if (!QFileInfo::exists(cachedPath)) {
-            if (cache.deleteImageEntry(cachedPath)) {
-                ++removed;
-                output << "Removed stale cache entry: " << cachedPath << '\n' << Qt::flush;
-            } else {
-                ++failed;
-                output << "Failed to remove stale cache entry: " << cachedPath << " ("
-                       << cache.errorString() << ")\n" << Qt::flush;
-            }
+            staleCandidates.append(cachedPath);
         } else if (unhideExisting) {
             if (cache.unhideImage(cachedPath)) {
                 ++restored;
@@ -235,6 +318,15 @@ int main(int argc, char *argv[])
             continue;
         }
 
+        QString relinkFromPath;
+        for (const auto &change : std::as_const(prefixChanges)) {
+            const QString candidate = replacePrefix(canonicalPath, change.second, change.first);
+            if (!candidate.isEmpty() && knownPaths.contains(pathKey(candidate))) {
+                relinkFromPath = originalPathByKey.value(pathKey(candidate), candidate);
+                break;
+            }
+        }
+
         const QByteArray detectedFormat = QImageReader::imageFormat(canonicalPath);
         if (detectedFormat.isEmpty()) {
             reportProgress();
@@ -242,6 +334,7 @@ int main(int argc, char *argv[])
         }
         ++scanned;
         output << "Reading: " << canonicalPath << '\n' << Qt::flush;
+        auto hashFuture = std::async(std::launch::async, hashFile, canonicalPath);
         QImageReader reader(canonicalPath);
         reader.setAutoTransform(true);
         const QImage image = reader.read();
@@ -262,19 +355,81 @@ int main(int argc, char *argv[])
             reportProgress();
             continue;
         }
-        if (cache.addImageIfNew(metadata)) {
-            ++added;
-            knownPaths.insert(key);
-            output << "Added: " << canonicalPath << '\n' << Qt::flush;
-        } else if (cache.errorString().isEmpty()) {
-            ++skipped;
-            knownPaths.insert(key);
-            output << "Skipped (already cached): " << canonicalPath << '\n' << Qt::flush;
-        } else {
+        ImageMetadata hashedMetadata = metadata;
+        hashedMetadata.contentHash = hashFuture.get();
+        if (hashedMetadata.contentHash.isEmpty()) {
             ++failed;
-            output << "Failed: " << canonicalPath << " (" << cache.errorString() << ")\n" << Qt::flush;
+            output << "Failed to hash: " << canonicalPath << '\n' << Qt::flush;
+            reportProgress();
+            continue;
+        }
+        if (!relinkFromPath.isEmpty()) {
+            if (cache.relinkImage(relinkFromPath, hashedMetadata)) {
+                ++added;
+                knownPaths.remove(pathKey(relinkFromPath));
+                originalPathByKey.remove(pathKey(relinkFromPath));
+                knownPaths.insert(key);
+                originalPathByKey.insert(key, canonicalPath);
+                output << "Relinked from prefix rule: " << relinkFromPath << " → " << canonicalPath << '\n' << Qt::flush;
+            } else {
+                ++failed;
+                output << "Failed to relink: " << canonicalPath << " (" << cache.errorString() << ")\n" << Qt::flush;
+            }
+        } else {
+            const QString matchingPath = cache.cachedImagePathByHash(hashedMetadata.contentHash);
+            if (!matchingPath.isEmpty() && pathKey(matchingPath) != key) {
+                const auto prefixes = inferPrefixes(matchingPath, canonicalPath);
+                output << "MovedMatch:\t" << matchingPath << '\t' << canonicalPath << '\t'
+                       << prefixes.first << '\t' << prefixes.second << '\n' << Qt::flush;
+                if (!waitForRelinkDecision(&stopped, &pendingCommands, output)) {
+                    reportProgress();
+                    break;
+                }
+                if (!prefixes.first.isEmpty() && !prefixes.second.isEmpty() && prefixes.first != prefixes.second)
+                    prefixChanges.append(prefixes);
+                if (cache.relinkImage(matchingPath, hashedMetadata)) {
+                    ++added;
+                    knownPaths.remove(pathKey(matchingPath));
+                    originalPathByKey.remove(pathKey(matchingPath));
+                    knownPaths.insert(key);
+                    originalPathByKey.insert(key, canonicalPath);
+                    output << "Relinked moved photo: " << matchingPath << " → " << canonicalPath << '\n' << Qt::flush;
+                } else {
+                    ++failed;
+                    output << "Failed to relink moved photo: " << canonicalPath << " (" << cache.errorString() << ")\n" << Qt::flush;
+                }
+            } else if (cache.addImageIfNew(hashedMetadata)) {
+                ++added;
+                knownPaths.insert(key);
+                originalPathByKey.insert(key, canonicalPath);
+                output << "Added: " << canonicalPath << '\n' << Qt::flush;
+            } else if (cache.errorString().isEmpty()) {
+                ++skipped;
+                knownPaths.insert(key);
+                originalPathByKey.insert(key, canonicalPath);
+                output << "Skipped (already cached): " << canonicalPath << '\n' << Qt::flush;
+            } else {
+                ++failed;
+                output << "Failed: " << canonicalPath << " (" << cache.errorString() << ")\n" << Qt::flush;
+            }
         }
         reportProgress();
+    }
+
+    if (stopped.isEmpty()) {
+        for (const QString &cachedPath : std::as_const(staleCandidates)) {
+            if (!knownPaths.contains(pathKey(cachedPath)))
+                continue;
+            if (cache.deleteImageEntry(cachedPath)) {
+                ++removed;
+                knownPaths.remove(pathKey(cachedPath));
+                output << "Removed stale cache entry: " << cachedPath << '\n' << Qt::flush;
+            } else {
+                ++failed;
+                output << "Failed to remove stale cache entry: " << cachedPath << " ("
+                       << cache.errorString() << ")\n" << Qt::flush;
+            }
+        }
     }
 
     if (stopped.isEmpty() && lastReportedProgress < 1000)

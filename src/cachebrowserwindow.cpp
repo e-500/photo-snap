@@ -343,7 +343,33 @@ void CacheBrowserWindow::appendScanOutput(const QString &output)
         m_scanOutputBuffer.remove(0, newline + 1);
         if (line.endsWith(QLatin1Char('\r')))
             line.chop(1);
-        if (line.startsWith(QStringLiteral("Progress: ")) && line.endsWith(QLatin1Char('%'))) {
+        if (line.startsWith(QStringLiteral("MovedMatch:\t"))) {
+            const QStringList fields = line.split(QLatin1Char('\t'));
+            if (fields.size() >= 5 && m_scannerProcess && m_scannerProcess->state() != QProcess::NotRunning) {
+                const QString oldPath = fields.at(1);
+                const QString newPath = fields.at(2);
+                const QString oldPrefix = fields.at(3);
+                const QString newPrefix = fields.at(4);
+                m_pauseResumeButton->setEnabled(false);
+                m_stopScanButton->setEnabled(false);
+                const QString from = oldPrefix.isEmpty() ? QFileInfo(oldPath).absolutePath() : oldPrefix;
+                const QString to = newPrefix.isEmpty() ? QFileInfo(newPath).absolutePath() : newPrefix;
+                const auto answer = QMessageBox::question(
+                    this, tr("Photo moved"),
+                    tr("This photo was found at a new path.\n\nFrom: %1\nTo: %2\n\n"
+                       "Relink this photo and use this folder change for other matching entries? Choosing No aborts this scan.")
+                        .arg(from, to),
+                    QMessageBox::Yes | QMessageBox::No, QMessageBox::Yes);
+                m_scannerProcess->write(answer == QMessageBox::Yes ? "relink\n" : "abort\n");
+                if (answer == QMessageBox::Yes) {
+                    m_pauseResumeButton->setEnabled(true);
+                    m_stopScanButton->setEnabled(true);
+                }
+                m_scanLog->appendPlainText(answer == QMessageBox::Yes
+                    ? tr("Relink approved: %1 → %2").arg(from, to)
+                    : tr("Relink declined; aborting scan."));
+            }
+        } else if (line.startsWith(QStringLiteral("Progress: ")) && line.endsWith(QLatin1Char('%'))) {
             bool valid = false;
             const double progress = line.mid(10, line.size() - 11).toDouble(&valid);
             if (valid)
