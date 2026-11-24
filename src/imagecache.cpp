@@ -869,8 +869,8 @@ bool ImageCache::updateImageShootingDateTime(const QString &path, const QString 
 {
     if (!m_initialized && !initialize())
         return false;
-    if (path.isEmpty() || dateTime.isEmpty()) {
-        m_error = QStringLiteral("A photo path and shooting date are required.");
+    if (path.isEmpty() || (dateTime.isEmpty() && updateDateTime.isEmpty())) {
+        m_error = QStringLiteral("A photo path and at least one metadata update are required.");
         return false;
     }
     if (!m_isServer) {
@@ -890,7 +890,7 @@ bool ImageCache::updateImageShootingDateTime(const QString &path, const QString 
     }
 
     QSqlQuery query(m_databaseHolder->database);
-    query.prepare(QStringLiteral("UPDATE image_cache SET shooting_datetime = :date, "
+    query.prepare(QStringLiteral("UPDATE image_cache SET shooting_datetime = COALESCE(NULLIF(:date, ''), shooting_datetime), "
                                  "update_datetime = COALESCE(NULLIF(:updated, ''), update_datetime) "
                                  "WHERE path = :path"));
     query.bindValue(QStringLiteral(":date"), dateTime);
@@ -1259,11 +1259,12 @@ void ImageCache::handleClient(QLocalSocket *socket, const QByteArray &request)
         requestStream >> path >> dateTime >> updateDateTime;
         bool changed = false;
         QString error;
-        if (requestStream.status() != QDataStream::Ok || path.isEmpty() || dateTime.isEmpty()) {
-            error = QStringLiteral("The cache action sent an invalid shooting date.");
+        if (requestStream.status() != QDataStream::Ok || path.isEmpty() ||
+            (dateTime.isEmpty() && updateDateTime.isEmpty())) {
+            error = QStringLiteral("The cache action sent an invalid metadata update.");
         } else {
             QSqlQuery query(m_databaseHolder->database);
-            query.prepare(QStringLiteral("UPDATE image_cache SET shooting_datetime = :date, "
+            query.prepare(QStringLiteral("UPDATE image_cache SET shooting_datetime = COALESCE(NULLIF(:date, ''), shooting_datetime), "
                                          "update_datetime = COALESCE(NULLIF(:updated, ''), update_datetime) "
                                          "WHERE path = :path"));
             query.bindValue(QStringLiteral(":date"), dateTime);

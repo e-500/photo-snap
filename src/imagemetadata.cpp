@@ -328,7 +328,8 @@ QByteArray makeMetadataExif(const QString &date, const QString &author, const QS
                             bool littleEndian, QVector<int> *relativeOffsetLocations = nullptr,
                             int *nextIfdLocation = nullptr)
 {
-    const int ifd0Count = 2 + (!author.isEmpty() ? 1 : 0) + (!copyright.isEmpty() ? 1 : 0);
+    const bool hasDate = !date.isEmpty();
+    const int ifd0Count = (hasDate ? 2 : 0) + (!author.isEmpty() ? 1 : 0) + (!copyright.isEmpty() ? 1 : 0);
     QByteArray tiff(8 + 2 + ifd0Count * 12 + 4, '\0');
     tiff[0] = littleEndian ? 'I' : 'M';
     tiff[1] = littleEndian ? 'I' : 'M';
@@ -350,38 +351,41 @@ QByteArray makeMetadataExif(const QString &date, const QString &author, const QS
             relativeOffsetLocations->append(entry + 8);
         tiff.append(value);
     };
-    appendAsciiEntry(0x0132, date);
+    if (hasDate)
+        appendAsciiEntry(0x0132, date);
     appendAsciiEntry(0x013b, author);
     appendAsciiEntry(0x8298, copyright);
     if (tiff.size() % 2 != 0)
         tiff.append('\0');
 
-    const int exifPointerEntry = 10 + entryIndex++ * 12;
-    const int exifIfdOffset = static_cast<int>(tiff.size());
-    write16(&tiff, exifIfdOffset, 2, littleEndian);
-    write16(&tiff, exifIfdOffset + 2, 0x9003, littleEndian);
-    write16(&tiff, exifIfdOffset + 4, 2, littleEndian);
-    write32(&tiff, exifIfdOffset + 6, 20, littleEndian);
-    const int originalDateOffset = exifIfdOffset + 30;
-    write32(&tiff, exifIfdOffset + 10, static_cast<quint32>(originalDateOffset), littleEndian);
-    write16(&tiff, exifIfdOffset + 14, 0x9004, littleEndian);
-    write16(&tiff, exifIfdOffset + 16, 2, littleEndian);
-    write32(&tiff, exifIfdOffset + 18, 20, littleEndian);
-    const int digitizedDateOffset = exifIfdOffset + 30 + 20;
-    write32(&tiff, exifIfdOffset + 22, static_cast<quint32>(digitizedDateOffset), littleEndian);
-    write32(&tiff, exifIfdOffset + 26, 0, littleEndian);
-    tiff.resize(exifIfdOffset + 30);
-    const QByteArray dateValue = date.toLatin1() + '\0';
-    tiff.append(dateValue);
-    tiff.append(dateValue);
-    write16(&tiff, exifPointerEntry, 0x8769, littleEndian);
-    write16(&tiff, exifPointerEntry + 2, 4, littleEndian);
-    write32(&tiff, exifPointerEntry + 4, 1, littleEndian);
-    write32(&tiff, exifPointerEntry + 8, static_cast<quint32>(exifIfdOffset), littleEndian);
-    if (relativeOffsetLocations) {
-        relativeOffsetLocations->append(exifPointerEntry + 8);
-        relativeOffsetLocations->append(exifIfdOffset + 10);
-        relativeOffsetLocations->append(exifIfdOffset + 22);
+    if (hasDate) {
+        const int exifPointerEntry = 10 + entryIndex++ * 12;
+        const int exifIfdOffset = static_cast<int>(tiff.size());
+        write16(&tiff, exifIfdOffset, 2, littleEndian);
+        write16(&tiff, exifIfdOffset + 2, 0x9003, littleEndian);
+        write16(&tiff, exifIfdOffset + 4, 2, littleEndian);
+        write32(&tiff, exifIfdOffset + 6, 20, littleEndian);
+        const int originalDateOffset = exifIfdOffset + 30;
+        write32(&tiff, exifIfdOffset + 10, static_cast<quint32>(originalDateOffset), littleEndian);
+        write16(&tiff, exifIfdOffset + 14, 0x9004, littleEndian);
+        write16(&tiff, exifIfdOffset + 16, 2, littleEndian);
+        write32(&tiff, exifIfdOffset + 18, 20, littleEndian);
+        const int digitizedDateOffset = exifIfdOffset + 30 + 20;
+        write32(&tiff, exifIfdOffset + 22, static_cast<quint32>(digitizedDateOffset), littleEndian);
+        write32(&tiff, exifIfdOffset + 26, 0, littleEndian);
+        tiff.resize(exifIfdOffset + 30);
+        const QByteArray dateValue = date.toLatin1() + '\0';
+        tiff.append(dateValue);
+        tiff.append(dateValue);
+        write16(&tiff, exifPointerEntry, 0x8769, littleEndian);
+        write16(&tiff, exifPointerEntry + 2, 4, littleEndian);
+        write32(&tiff, exifPointerEntry + 4, 1, littleEndian);
+        write32(&tiff, exifPointerEntry + 8, static_cast<quint32>(exifIfdOffset), littleEndian);
+        if (relativeOffsetLocations) {
+            relativeOffsetLocations->append(exifPointerEntry + 8);
+            relativeOffsetLocations->append(exifIfdOffset + 10);
+            relativeOffsetLocations->append(exifIfdOffset + 22);
+        }
     }
     const int nextIfd = 10 + ifd0Count * 12;
     if (nextIfdLocation)
@@ -475,14 +479,19 @@ QString readImageCopyright(const QString &path)
 bool writeImageShotDateTime(const QString &path, const QDateTime &dateTime, QString *error)
 {
     const ExifInfo existing = readExif(path);
-    return writeImageExifMetadata(path, dateTime, existing.author, existing.copyright, error);
+    return writeImageExifMetadata(path, dateTime, existing.author, existing.copyright, true, true, true, error);
 }
 
 bool writeImageExifMetadata(const QString &path, const QDateTime &dateTime, const QString &author,
-                            const QString &copyright, QString *error)
+                            const QString &copyright, bool updateDateTime, bool updateAuthor,
+                            bool updateCopyright, QString *error)
 {
-    if (!dateTime.isValid())
+    if (updateDateTime && !dateTime.isValid())
         return fail(error, QStringLiteral("Enter a valid date and time."));
+    if (!updateDateTime && !updateAuthor && !updateCopyright)
+        return fail(error, QStringLiteral("Select at least one metadata field to update."));
+
+    const ExifInfo existing = readExif(path);
 
     QFile source(path);
     if (!source.open(QIODevice::ReadOnly))
@@ -493,8 +502,17 @@ bool writeImageExifMetadata(const QString &path, const QDateTime &dateTime, cons
     if (bytes.isEmpty())
         return fail(error, QStringLiteral("The image file is empty or could not be read."));
 
-    const QString exifDate = dateTime.toString(QStringLiteral("yyyy:MM:dd HH:mm:ss"));
-    const QByteArray metadataExif = makeMetadataExif(exifDate, author.trimmed(), copyright.trimmed(), true);
+    QString exifDate;
+    if (updateDateTime) {
+        exifDate = dateTime.toString(QStringLiteral("yyyy:MM:dd HH:mm:ss"));
+    } else {
+        const QDateTime existingDate = QDateTime::fromString(existing.dateTime, Qt::ISODate);
+        if (existingDate.isValid())
+            exifDate = existingDate.toString(QStringLiteral("yyyy:MM:dd HH:mm:ss"));
+    }
+    const QString finalAuthor = updateAuthor ? author.trimmed() : existing.author;
+    const QString finalCopyright = updateCopyright ? copyright.trimmed() : existing.copyright;
+    const QByteArray metadataExif = makeMetadataExif(exifDate, finalAuthor, finalCopyright, true);
 
     if (bytes.size() >= 2 && static_cast<quint8>(bytes.at(0)) == 0xff &&
         static_cast<quint8>(bytes.at(1)) == 0xd8) {
@@ -542,7 +560,7 @@ bool writeImageExifMetadata(const QString &path, const QDateTime &dateTime, cons
             bytes.append('\0');
         QVector<int> offsetLocations;
         int nextIfdLocation = 0;
-        QByteArray appendedExif = makeMetadataExif(exifDate, author.trimmed(), copyright.trimmed(), littleEndian,
+        QByteArray appendedExif = makeMetadataExif(exifDate, finalAuthor, finalCopyright, littleEndian,
                                                    &offsetLocations, &nextIfdLocation);
         write32(&bytes, 4, base + 8, littleEndian);
         for (const int location : std::as_const(offsetLocations))

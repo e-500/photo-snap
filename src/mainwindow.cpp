@@ -25,6 +25,7 @@
 #include <QAction>
 #include <QApplication>
 #include <QClipboard>
+#include <QCheckBox>
 #include <QComboBox>
 #include <QCryptographicHash>
 #include <QDir>
@@ -49,6 +50,7 @@
 #include <QPixmap>
 #include <QPainter>
 #include <QPalette>
+#include <QPushButton>
 #include <QStatusBar>
 #include <QStyle>
 #include <QSettings>
@@ -497,7 +499,21 @@ void MainWindow::editExif()
     auto *shotDateTime = new QDateTimeEdit(initialDateTime, &dialog);
     shotDateTime->setDisplayFormat(QStringLiteral("yyyy-MM-dd HH:mm:ss"));
     shotDateTime->setCalendarPopup(true);
-    form->addRow(tr("Shot date/time"), shotDateTime);
+    const auto addUpdateField = [&dialog, form](const QString &label, QWidget *field) {
+        auto *row = new QWidget(&dialog);
+        auto *rowLayout = new QHBoxLayout(row);
+        rowLayout->setContentsMargins(0, 0, 0, 0);
+        auto *enabled = new QCheckBox(tr("Update"), row);
+        enabled->setChecked(true);
+        enabled->setToolTip(tr("When unchecked, keep each photo's existing value."));
+        field->setEnabled(true);
+        rowLayout->addWidget(enabled);
+        rowLayout->addWidget(field, 1);
+        QObject::connect(enabled, &QCheckBox::toggled, field, &QWidget::setEnabled);
+        form->addRow(label, row);
+        return enabled;
+    };
+    auto *updateDateTime = addUpdateField(tr("Shot date/time"), shotDateTime);
 
     QSettings settings;
     auto makeSuggestionCombo = [&dialog](QStringList suggestions, const QString &currentValue) {
@@ -515,22 +531,32 @@ void MainWindow::editExif()
     if (!authorSuggestions.contains(QStringLiteral("Photographer")))
         authorSuggestions.append(tr("Photographer"));
     auto *author = makeSuggestionCombo(authorSuggestions, readImageAuthor(initialPath));
-    form->addRow(tr("Author"), author);
+    auto *updateAuthor = addUpdateField(tr("Author"), author);
 
     QStringList copyrightSuggestions = settings.value(QStringLiteral("metadata/copyrightSuggestions")).toStringList();
     copyrightSuggestions << tr("All rights reserved") << QStringLiteral("CC BY 4.0")
                         << QStringLiteral("CC BY-SA 4.0");
     auto *copyright = makeSuggestionCombo(copyrightSuggestions, readImageCopyright(initialPath));
-    form->addRow(tr("Copyright"), copyright);
+    auto *updateCopyright = addUpdateField(tr("Copyright"), copyright);
     layout->addLayout(form);
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Save | QDialogButtonBox::Cancel, &dialog);
+    QPushButton *saveButton = buttons->button(QDialogButtonBox::Save);
+    const auto updateSaveEnabled = [updateDateTime, updateAuthor, updateCopyright, saveButton]() {
+        saveButton->setEnabled(updateDateTime->isChecked() || updateAuthor->isChecked() ||
+                                updateCopyright->isChecked());
+    };
+    connect(updateDateTime, &QCheckBox::toggled, &dialog, updateSaveEnabled);
+    connect(updateAuthor, &QCheckBox::toggled, &dialog, updateSaveEnabled);
+    connect(updateCopyright, &QCheckBox::toggled, &dialog, updateSaveEnabled);
+    updateSaveEnabled();
     connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
     layout->addWidget(buttons);
     if (dialog.exec() != QDialog::Accepted)
         return;
 
-    const QString shootingDateTime = shotDateTime->dateTime().toString(Qt::ISODate);
+    const QString shootingDateTime = updateDateTime->isChecked()
+        ? shotDateTime->dateTime().toString(Qt::ISODate) : QString();
     QString error;
     const QString authorValue = author->currentText().trimmed();
     const QString copyrightValue = copyright->currentText().trimmed();
@@ -555,7 +581,9 @@ void MainWindow::editExif()
     int saved = 0;
     for (const QString &path : std::as_const(targetPaths)) {
         error.clear();
-        if (!writeImageExifMetadata(path, shotDateTime->dateTime(), authorValue, copyrightValue, &error)) {
+        if (!writeImageExifMetadata(path, shotDateTime->dateTime(), authorValue, copyrightValue,
+                                    updateDateTime->isChecked(), updateAuthor->isChecked(),
+                                    updateCopyright->isChecked(), &error)) {
             failures.append(tr("%1: %2").arg(path, error));
             continue;
         }

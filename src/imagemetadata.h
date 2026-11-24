@@ -28,4 +28,5 @@ bool writeImageShotDateTime(const QString &path, const QDateTime &dateTime, QStr
 QString readImageAuthor(const QString &path);
 QString readImageCopyright(const QString &path);
 bool writeImageExifMetadata(const QString &path, const QDateTime &dateTime, const QString &author,
-                            const QString &copyright, QString *error = nullptr);
+                            const QString &copyright, bool updateDateTime, bool updateAuthor,
+                            bool updateCopyright, QString *error = nullptr);

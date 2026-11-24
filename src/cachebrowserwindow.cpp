@@ -646,9 +646,12 @@ void CacheBrowserWindow::setYearExpanded(YearPane *pane, bool expanded)
             monthPane->toggle->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
             monthPane->toggle->setArrowType(Qt::RightArrow);
             const int monthNumber = month.toInt();
+            QString monthName = QLocale().monthName(monthNumber, QLocale::LongFormat);
+            if (!monthName.isEmpty())
+                monthName[0] = monthName.at(0).toUpper();
             monthPane->toggle->setText(month == QStringLiteral("Undated")
                                            ? tr("Undated")
-                                           : QLocale().monthName(monthNumber, QLocale::LongFormat));
+                                           : monthName);
             monthPane->toggle->setStyleSheet(QStringLiteral(
                 "QToolButton { text-align: left; padding: 2px 4px; background: #24282e; border-radius: 3px; }"
                 "QToolButton:hover { background: #30353d; }"));
