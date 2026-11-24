@@ -1,0 +1,5 @@
+<RCC>
+  <qresource prefix="/icons">
+    <file alias="photosnap.png">photosnap.png</file>
+  </qresource>
+</RCC>

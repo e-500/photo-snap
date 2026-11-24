@@ -713,7 +713,7 @@ bool ImageCache::updateImageHash(const QString &path, const QByteArray &hash)
         return success;
     }
     QSqlQuery query(m_databaseHolder->database);
-    query.prepare(QStringLiteral("UPDATE image_cache SET content_hash=:hash WHERE path=:path AND content_hash IS NULL"));
+    query.prepare(QStringLiteral("UPDATE image_cache SET content_hash=:hash WHERE path=:path"));
     query.bindValue(QStringLiteral(":hash"), hash);
     query.bindValue(QStringLiteral(":path"), path);
     if (!query.exec()) {
@@ -1242,7 +1242,7 @@ void ImageCache::handleClient(QLocalSocket *socket, const QByteArray &request)
             error = QStringLiteral("The scanner sent an invalid image hash update.");
         } else {
             QSqlQuery query(m_databaseHolder->database);
-            query.prepare(QStringLiteral("UPDATE image_cache SET content_hash=:hash WHERE path=:path AND content_hash IS NULL"));
+            query.prepare(QStringLiteral("UPDATE image_cache SET content_hash=:hash WHERE path=:path"));
             query.bindValue(QStringLiteral(":hash"), hash);
             query.bindValue(QStringLiteral(":path"), path);
             if (query.exec()) changed = query.numRowsAffected() > 0;

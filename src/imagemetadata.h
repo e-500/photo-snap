@@ -25,3 +25,7 @@
 ImageMetadata makeImageMetadata(const QString &path, const QString &format, const QImage &image);
 QString readImageShotDateTime(const QString &path);
 bool writeImageShotDateTime(const QString &path, const QDateTime &dateTime, QString *error = nullptr);
+QString readImageAuthor(const QString &path);
+QString readImageCopyright(const QString &path);
+bool writeImageExifMetadata(const QString &path, const QDateTime &dateTime, const QString &author,
+                            const QString &copyright, QString *error = nullptr);

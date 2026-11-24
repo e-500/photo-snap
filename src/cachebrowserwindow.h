@@ -23,8 +23,10 @@
 #include <QVector>
 
 #include "imagecache.h"
+#include "selectedimages.h"
 
 class QLabel;
+class QCheckBox;
 class QDialog;
 class QPlainTextEdit;
 class QPushButton;
@@ -45,7 +47,8 @@ class CacheBrowserWindow final : public QDockWidget
 public:
     explicit CacheBrowserWindow(ImageCache *cache, QWidget *parent = nullptr);
     void refresh();
-    QStringList selectedPaths() const;
+    bool hasSelection() const;
+    QVector<ImageMetadata> getSelectedImages();
     void clearSelection();
 
 signals:
@@ -64,6 +67,9 @@ private:
     struct MonthPane;
     void setYearExpanded(YearPane *pane, bool expanded);
     void setMonthExpanded(MonthPane *pane, bool expanded);
+    void updateSelectionControls(YearPane *pane = nullptr);
+    void hideSelectedImages();
+    void deleteSelectedImages();
     void checkScrollPrefetch();
     void appendScanOutput(const QString &output);
 
@@ -82,6 +88,7 @@ private:
     QPushButton *m_stopScanButton = nullptr;
     bool m_scanPaused = false;
     ImageDateMode m_dateMode = ImageDateMode::ShootingDate;
+    SelectedImages m_selectedImages;
     QVector<YearPane *> m_yearPanes;
     QStringList m_monthsToRestore;
     QTimer *m_scrollPrefetchTimer = nullptr;

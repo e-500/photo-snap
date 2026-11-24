@@ -23,6 +23,7 @@
 
 class QGraphicsPixmapItem;
 class QGraphicsScene;
+class QMouseEvent;
 class QPixmap;
 
 class PhotoView final : public QGraphicsView
@@ -44,8 +45,10 @@ public:
 signals:
     void zoomChanged(qreal factor);
     void filesDropped(const QStringList &paths);
+    void clicked();
 
 protected:
+    void mousePressEvent(QMouseEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
     void wheelEvent(QWheelEvent *event) override;
     void dragEnterEvent(QDragEnterEvent *event) override;

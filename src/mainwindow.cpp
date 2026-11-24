@@ -25,6 +25,8 @@
 #include <QAction>
 #include <QApplication>
 #include <QClipboard>
+#include <QComboBox>
+#include <QCryptographicHash>
 #include <QDir>
 #include <QDateTime>
 #include <QDateTimeEdit>
@@ -33,6 +35,7 @@
 #include <QDebug>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QFile>
 #include <QFormLayout>
 #include <QGraphicsPixmapItem>
 #include <QImageReader>
@@ -48,6 +51,7 @@
 #include <QPalette>
 #include <QStatusBar>
 #include <QStyle>
+#include <QSettings>
 #include <QToolBar>
 #include <QTransform>
 #include <QToolButton>
@@ -56,6 +60,7 @@
 #include <QVBoxLayout>
 
 #include <algorithm>
+#include <utility>
 
 namespace {
 
@@ -114,7 +119,7 @@ MainWindow::MainWindow(QWidget *parent)
     m_editExifButton = new QToolButton(imageTitleBar);
     m_editExifButton->setAutoRaise(true);
     m_editExifButton->setIcon(editTimestampIcon());
-    m_editExifButton->setText(tr("Edit shooting timestamp"));
+    m_editExifButton->setText(tr("Edit metadata"));
     m_editExifButton->setEnabled(false);
     m_editExifButton->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     connect(m_editExifButton, &QToolButton::clicked, this, &MainWindow::editExif);
@@ -170,6 +175,10 @@ MainWindow::MainWindow(QWidget *parent)
     statusBar()->showMessage(tr("Open a photo to get started · Ctrl+O"));
 
     connect(m_view, &PhotoView::zoomChanged, this, &MainWindow::updateZoomLabel);
+    connect(m_view, &PhotoView::clicked, this, [this]() {
+        if (m_cacheBrowser)
+            m_cacheBrowser->clearSelection();
+    });
     connect(m_view, &PhotoView::filesDropped, this, [this](const QStringList &paths) {
         if (!paths.isEmpty())
             openImage(paths.constFirst());
@@ -268,8 +277,9 @@ void MainWindow::showCachedImages()
         resizeDocks({m_cacheBrowser}, {420}, Qt::Horizontal);
         connect(m_cacheBrowser, &CacheBrowserWindow::openImageRequested, this, &MainWindow::openImage);
         connect(m_cacheBrowser, &CacheBrowserWindow::selectionChanged, this, [this]() {
-            const bool hasSelection = !m_cacheBrowser->selectedPaths().isEmpty();
+            const bool hasSelection = m_cacheBrowser->hasSelection();
             m_copyAction->setEnabled(hasSelection || !m_originalPixmap.isNull());
+            m_editExifButton->setEnabled(hasSelection || !m_currentPath.isEmpty());
         });
         connect(m_cacheBrowser, &QDockWidget::visibilityChanged, this,
                 [this]() { updateLibraryButtonText(); });
@@ -404,8 +414,16 @@ void MainWindow::rotateImage()
 
 void MainWindow::copyImageToClipboard()
 {
-    const QStringList selectedPaths = m_cacheBrowser ? m_cacheBrowser->selectedPaths() : QStringList();
-    if (!selectedPaths.isEmpty()) {
+    const bool hasLibrarySelection = m_cacheBrowser && m_cacheBrowser->hasSelection();
+    const QVector<ImageMetadata> selectedImages = m_cacheBrowser ? m_cacheBrowser->getSelectedImages()
+                                                                  : QVector<ImageMetadata>();
+    if (hasLibrarySelection) {
+        if (selectedImages.isEmpty())
+            return;
+        QStringList selectedPaths;
+        selectedPaths.reserve(selectedImages.size());
+        for (const ImageMetadata &image : selectedImages)
+            selectedPaths.append(image.path);
         auto *mimeData = new QMimeData;
         QList<QUrl> urls;
         urls.reserve(selectedPaths.size());
@@ -449,21 +467,61 @@ void MainWindow::copyImageToClipboard()
 
 void MainWindow::editExif()
 {
-    if (m_currentPath.isEmpty())
+    QStringList targetPaths;
+    if (m_cacheBrowser && m_cacheBrowser->hasSelection()) {
+        const QVector<ImageMetadata> selectedImages = m_cacheBrowser->getSelectedImages();
+        for (const ImageMetadata &image : selectedImages)
+            targetPaths.append(image.path);
+    } else if (!m_currentPath.isEmpty()) {
+        targetPaths.append(m_currentPath);
+    }
+    targetPaths.removeDuplicates();
+    if (targetPaths.isEmpty())
+        return;
+    if (targetPaths.size() > 1 &&
+        QMessageBox::question(this, tr("Edit selected photo metadata?"),
+                              tr("Apply the same shooting date, author, and copyright to all %n selected photos?",
+                                 nullptr, targetPaths.size()),
+                              QMessageBox::Yes | QMessageBox::No, QMessageBox::No) != QMessageBox::Yes)
         return;
 
-    QDateTime initialDateTime = QDateTime::fromString(readImageShotDateTime(m_currentPath), Qt::ISODate);
+    const QString initialPath = targetPaths.constFirst();
+    QDateTime initialDateTime = QDateTime::fromString(readImageShotDateTime(initialPath), Qt::ISODate);
     if (!initialDateTime.isValid())
-        initialDateTime = QFileInfo(m_currentPath).lastModified();
+        initialDateTime = QFileInfo(initialPath).lastModified();
 
     QDialog dialog(this);
-    dialog.setWindowTitle(tr("Edit EXIF"));
+    dialog.setWindowTitle(tr("Edit metadata"));
     auto *layout = new QVBoxLayout(&dialog);
     auto *form = new QFormLayout;
     auto *shotDateTime = new QDateTimeEdit(initialDateTime, &dialog);
     shotDateTime->setDisplayFormat(QStringLiteral("yyyy-MM-dd HH:mm:ss"));
     shotDateTime->setCalendarPopup(true);
     form->addRow(tr("Shot date/time"), shotDateTime);
+
+    QSettings settings;
+    auto makeSuggestionCombo = [&dialog](QStringList suggestions, const QString &currentValue) {
+        auto *combo = new QComboBox(&dialog);
+        combo->setEditable(true);
+        combo->setInsertPolicy(QComboBox::NoInsert);
+        suggestions.removeDuplicates();
+        if (!currentValue.trimmed().isEmpty() && !suggestions.contains(currentValue))
+            suggestions.prepend(currentValue);
+        combo->addItems(suggestions);
+        combo->setCurrentText(currentValue);
+        return combo;
+    };
+    QStringList authorSuggestions = settings.value(QStringLiteral("metadata/authorSuggestions")).toStringList();
+    if (!authorSuggestions.contains(QStringLiteral("Photographer")))
+        authorSuggestions.append(tr("Photographer"));
+    auto *author = makeSuggestionCombo(authorSuggestions, readImageAuthor(initialPath));
+    form->addRow(tr("Author"), author);
+
+    QStringList copyrightSuggestions = settings.value(QStringLiteral("metadata/copyrightSuggestions")).toStringList();
+    copyrightSuggestions << tr("All rights reserved") << QStringLiteral("CC BY 4.0")
+                        << QStringLiteral("CC BY-SA 4.0");
+    auto *copyright = makeSuggestionCombo(copyrightSuggestions, readImageCopyright(initialPath));
+    form->addRow(tr("Copyright"), copyright);
     layout->addLayout(form);
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Save | QDialogButtonBox::Cancel, &dialog);
     connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
@@ -474,19 +532,69 @@ void MainWindow::editExif()
 
     const QString shootingDateTime = shotDateTime->dateTime().toString(Qt::ISODate);
     QString error;
-    if (!writeImageShotDateTime(m_currentPath, shotDateTime->dateTime(), &error)) {
-        QMessageBox::warning(this, tr("Could not update EXIF"), error);
-        return;
-    }
+    const QString authorValue = author->currentText().trimmed();
+    const QString copyrightValue = copyright->currentText().trimmed();
+
+    auto rememberSuggestion = [](const QString &key, const QString &value) {
+        if (value.isEmpty())
+            return;
+        QSettings recentSettings;
+        QStringList values = recentSettings.value(key).toStringList();
+        values.removeAll(value);
+        values.prepend(value);
+        while (values.size() > 20)
+            values.removeLast();
+        recentSettings.setValue(key, values);
+    };
+    rememberSuggestion(QStringLiteral("metadata/authorSuggestions"), authorValue);
+    rememberSuggestion(QStringLiteral("metadata/copyrightSuggestions"), copyrightValue);
 
     ImageCache &cache = ImageCache::instance();
-    const QString updateDateTime = QFileInfo(m_currentPath).lastModified().toString(Qt::ISODate);
-    if (cache.initialize() && !cache.updateImageShootingDateTime(m_currentPath, shootingDateTime, updateDateTime))
-        QMessageBox::warning(this, tr("Photo saved"),
-                             tr("The EXIF date was saved, but the library entry could not be updated: %1")
-                                 .arg(cache.errorString()));
-    if (m_cacheBrowser && m_cacheBrowser->isVisible())
-        m_cacheBrowser->refresh();
+    const bool cacheAvailable = cache.initialize();
+    QStringList failures;
+    int saved = 0;
+    for (const QString &path : std::as_const(targetPaths)) {
+        error.clear();
+        if (!writeImageExifMetadata(path, shotDateTime->dateTime(), authorValue, copyrightValue, &error)) {
+            failures.append(tr("%1: %2").arg(path, error));
+            continue;
+        }
+        ++saved;
+        if (!cacheAvailable)
+            continue;
+        QFile file(path);
+        QCryptographicHash hash(QCryptographicHash::Sha256);
+        if (!file.open(QIODevice::ReadOnly)) {
+            failures.append(tr("%1: metadata saved, but hash could not be refreshed (%2)").arg(path, file.errorString()));
+            continue;
+        }
+        bool hashRead = true;
+        while (!file.atEnd()) {
+            const QByteArray chunk = file.read(1024 * 1024);
+            if (chunk.isEmpty() && file.error() != QFileDevice::NoError) {
+                hashRead = false;
+                failures.append(tr("%1: metadata saved, but hash could not be refreshed (%2)").arg(path, file.errorString()));
+                break;
+            }
+            hash.addData(chunk);
+        }
+        if (!hashRead)
+            continue;
+        const QString updatedAt = QFileInfo(path).lastModified().toString(Qt::ISODate);
+        if (!cache.updateImageShootingDateTime(path, shootingDateTime, updatedAt) ||
+            !cache.updateImageHash(path, hash.result()))
+            failures.append(tr("%1: metadata saved, but the library entry could not be updated (%2)")
+                                .arg(path, cache.errorString()));
+    }
+    if (!failures.isEmpty())
+        QMessageBox::warning(this, saved == targetPaths.size() ? tr("Some library entries could not be updated")
+                                                               : tr("Some photos could not be updated"),
+                             failures.join(QLatin1Char('\n')));
+    if (m_cacheBrowser) {
+        m_cacheBrowser->clearSelection();
+        if (m_cacheBrowser->isVisible())
+            m_cacheBrowser->refresh();
+    }
 }
 
 void MainWindow::toggleFullScreen()

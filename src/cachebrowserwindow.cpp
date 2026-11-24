@@ -26,6 +26,7 @@
 #include <QEvent>
 #include <QCursor>
 #include <QCoreApplication>
+#include <QCheckBox>
 #include <QDialog>
 #include <QDir>
 #include <QFileDialog>
@@ -44,6 +45,7 @@
 #include <QResizeEvent>
 #include <QScrollArea>
 #include <QScrollBar>
+#include <QSignalBlocker>
 #include <QSizePolicy>
 #include <QSizePolicy>
 #include <QShortcut>
@@ -128,6 +130,8 @@ struct CacheBrowserWindow::YearPane
     QString year;
     QWidget *container = nullptr;
     QToolButton *toggle = nullptr;
+    QCheckBox *selection = nullptr;
+    QWidget *header = nullptr;
     QWidget *content = nullptr;
     QVBoxLayout *contentLayout = nullptr;
     QVector<MonthPane *> months;
@@ -140,6 +144,8 @@ struct CacheBrowserWindow::MonthPane
     QString month;
     QWidget *container = nullptr;
     QToolButton *toggle = nullptr;
+    QCheckBox *selection = nullptr;
+    QWidget *header = nullptr;
     QWidget *content = nullptr;
     QVBoxLayout *contentLayout = nullptr;
     ImageLibraryWidget *library = nullptr;
@@ -177,6 +183,7 @@ CacheBrowserWindow::CacheBrowserWindow(ImageCache *cache, QWidget *parent)
     setTitleBarWidget(titleBar);
     connect(m_scanButton, &QToolButton::clicked, this, &CacheBrowserWindow::startScan);
     connect(m_dateModeButton, &QToolButton::toggled, this, [this](bool creationDate) {
+        m_selectedImages.clear();
         m_dateMode = creationDate ? ImageDateMode::CreationDate : ImageDateMode::ShootingDate;
         m_dateModeButton->setText(creationDate ? tr("By creation date") : tr("By shooting date"));
         refresh();
@@ -424,7 +431,14 @@ void CacheBrowserWindow::refresh()
         sectionLayout->setContentsMargins(0, 0, 0, 0);
         sectionLayout->setSpacing(0);
         sectionLayout->setSizeConstraint(QLayout::SetNoConstraint);
-        pane->toggle = new QToolButton(pane->container);
+        pane->header = new QWidget(pane->container);
+        auto *headerLayout = new QHBoxLayout(pane->header);
+        headerLayout->setContentsMargins(2, 0, 2, 0);
+        headerLayout->setSpacing(4);
+        pane->selection = new QCheckBox(pane->header);
+        pane->selection->setTristate(true);
+        pane->selection->setToolTip(tr("Select every photo in this year"));
+        pane->toggle = new QToolButton(pane->header);
         pane->toggle->setCheckable(true);
         pane->toggle->setAutoRaise(true);
         pane->toggle->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
@@ -442,47 +456,161 @@ void CacheBrowserWindow::refresh()
         pane->contentLayout->setSpacing(6);
         pane->contentLayout->setSizeConstraint(QLayout::SetNoConstraint);
         pane->content->hide();
-        sectionLayout->addWidget(pane->toggle);
+        headerLayout->addWidget(pane->selection);
+        headerLayout->addWidget(pane->toggle, 1);
+        sectionLayout->addWidget(pane->header);
         sectionLayout->addWidget(pane->content);
         m_yearsLayout->addWidget(pane->container);
         m_yearPanes.append(pane);
         connect(pane->toggle, &QToolButton::toggled, this,
                 [this, pane](bool expanded) { setYearExpanded(pane, expanded); });
+        connect(pane->selection, &QCheckBox::toggled, this, [this, pane](bool selected) {
+            m_selectedImages.setYearSelected(pane->year, selected);
+            updateSelectionControls(pane);
+            emit selectionChanged();
+        });
         if (expandedYears.contains(year))
             pane->toggle->setChecked(true);
     }
     m_yearsLayout->addStretch(1);
     m_monthsToRestore.clear();
+    updateSelectionControls();
     m_scrollPrefetchTimer->start();
     emit selectionChanged();
 }
 
-QStringList CacheBrowserWindow::selectedPaths() const
+bool CacheBrowserWindow::hasSelection() const
 {
-    QStringList paths;
-    for (const YearPane *pane : m_yearPanes) {
-        if (!pane)
-            continue;
-        for (const MonthPane *monthPane : pane->months) {
-            if (monthPane && monthPane->library)
-                paths.append(monthPane->library->selectedPaths());
+    return m_selectedImages.hasSelection();
+}
+
+QVector<ImageMetadata> CacheBrowserWindow::getSelectedImages()
+{
+    QVector<ImageMetadata> selected;
+    if (!m_cache || !m_selectedImages.hasSelection())
+        return selected;
+
+    QSet<QString> selectedPaths;
+    const QStringList explicitPaths = m_selectedImages.explicitPaths();
+    QSet<QString> loadedGroups;
+    const QStringList selectedYears = m_selectedImages.selectedYears();
+    const QSet<QString> fullYears(selectedYears.cbegin(), selectedYears.cend());
+
+    const auto appendGroup = [this, &selected, &selectedPaths](const QString &year, const QString &month,
+                                                              const QSet<QString> *onlyPaths) {
+        constexpr int pageSize = 1000;
+        int offset = 0;
+        while (true) {
+            const QVector<ImageMetadata> page =
+                m_cache->cachedImagesOrderedByDate(offset, pageSize, year, m_dateMode, month);
+            for (const ImageMetadata &image : page) {
+                const QString date = m_dateMode == ImageDateMode::CreationDate
+                    ? image.creationDateTime : image.shootingDateTime;
+                const QString imageYear = date.isEmpty() ? QStringLiteral("Undated") : date.left(4);
+                const QString imageMonth = date.isEmpty() ? QStringLiteral("Undated") : date.mid(5, 2);
+                if (onlyPaths && !onlyPaths->contains(image.path))
+                    continue;
+                if (!m_selectedImages.isImageSelected(image.path, imageYear, imageMonth) ||
+                    selectedPaths.contains(image.path))
+                    continue;
+                selectedPaths.insert(image.path);
+                selected.append(image);
+            }
+            if (page.size() < pageSize)
+                break;
+            offset += page.size();
         }
+    };
+
+    for (const QString &year : selectedYears) {
+        loadedGroups.insert(year + QLatin1Char('\x1f'));
+        appendGroup(year, QString(), nullptr);
     }
-    paths.removeDuplicates();
-    paths.sort(Qt::CaseInsensitive);
-    return paths;
+    for (const QString &key : m_selectedImages.selectedMonthKeys()) {
+        const QStringList parts = key.split(QChar(0x1f));
+        if (parts.size() != 2 || fullYears.contains(parts.at(0)))
+            continue;
+        loadedGroups.insert(key);
+        appendGroup(parts.at(0), parts.at(1), nullptr);
+    }
+
+    QHash<QString, QSet<QString>> explicitPathsByGroup;
+    for (const QString &path : explicitPaths) {
+        const QString year = m_selectedImages.yearForPath(path);
+        const QString month = m_selectedImages.monthForPath(path);
+        if (year.isEmpty() || month.isEmpty() || fullYears.contains(year) ||
+            loadedGroups.contains(SelectedImages::monthKey(year, month)))
+            continue;
+        explicitPathsByGroup[SelectedImages::monthKey(year, month)].insert(path);
+    }
+    for (auto it = explicitPathsByGroup.cbegin(); it != explicitPathsByGroup.cend(); ++it) {
+        const QStringList parts = it.key().split(QChar(0x1f));
+        if (parts.size() == 2)
+            appendGroup(parts.at(0), parts.at(1), &it.value());
+    }
+
+    return selected;
 }
 
 void CacheBrowserWindow::clearSelection()
 {
+    m_selectedImages.clear();
+    updateSelectionControls();
     for (YearPane *pane : std::as_const(m_yearPanes)) {
-        if (!pane)
-            continue;
         for (MonthPane *monthPane : std::as_const(pane->months)) {
-            if (monthPane && monthPane->library)
+            if (monthPane->library)
                 monthPane->library->clearSelection();
         }
     }
+    emit selectionChanged();
+}
+
+void CacheBrowserWindow::hideSelectedImages()
+{
+    const QVector<ImageMetadata> images = getSelectedImages();
+    QStringList failures;
+    for (const ImageMetadata &image : images) {
+        if (!m_cache->hideImage(image.path))
+            failures.append(QStringLiteral("%1: %2").arg(image.path, m_cache->errorString()));
+    }
+    clearSelection();
+    refresh();
+    if (!failures.isEmpty())
+        QMessageBox::warning(this, tr("Could not hide some photos"), failures.join(QLatin1Char('\n')));
+}
+
+void CacheBrowserWindow::deleteSelectedImages()
+{
+    const QVector<ImageMetadata> images = getSelectedImages();
+    if (images.isEmpty())
+        return;
+    QStringList paths;
+    paths.reserve(images.size());
+    for (const ImageMetadata &image : images)
+        paths.append(image.path);
+    QStringList previewPaths = paths.mid(0, 10);
+    if (paths.size() > previewPaths.size())
+        previewPaths.append(tr("… and %1 more").arg(paths.size() - previewPaths.size()));
+    const auto answer = QMessageBox::question(
+        this, tr("Delete photos permanently?"),
+        tr("This will permanently delete %n selected image file(s):\n\n%1\n\nContinue?", nullptr,
+           paths.size()).arg(previewPaths.join(QLatin1Char('\n'))),
+        QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+    if (answer != QMessageBox::Yes)
+        return;
+    QStringList failures;
+    for (const QString &path : std::as_const(paths)) {
+        if (QFileInfo::exists(path) && !QFile::remove(path)) {
+            failures.append(tr("Could not delete file: %1").arg(path));
+            continue;
+        }
+        if (!m_cache->deleteImageEntry(path))
+            failures.append(tr("Could not remove cache entry for %1: %2").arg(path, m_cache->errorString()));
+    }
+    clearSelection();
+    refresh();
+    if (!failures.isEmpty())
+        QMessageBox::warning(this, tr("Some photos could not be deleted"), failures.join(QLatin1Char('\n')));
 }
 
 void CacheBrowserWindow::setYearExpanded(YearPane *pane, bool expanded)
@@ -505,7 +633,13 @@ void CacheBrowserWindow::setYearExpanded(YearPane *pane, bool expanded)
             monthLayout->setContentsMargins(8, 0, 0, 0);
             monthLayout->setSpacing(0);
             monthLayout->setSizeConstraint(QLayout::SetNoConstraint);
-            monthPane->toggle = new QToolButton(monthPane->container);
+            monthPane->header = new QWidget(monthPane->container);
+            auto *monthHeaderLayout = new QHBoxLayout(monthPane->header);
+            monthHeaderLayout->setContentsMargins(2, 0, 2, 0);
+            monthHeaderLayout->setSpacing(4);
+            monthPane->selection = new QCheckBox(monthPane->header);
+            monthPane->selection->setToolTip(tr("Select every photo in this month"));
+            monthPane->toggle = new QToolButton(monthPane->header);
             monthPane->toggle->setCheckable(true);
             monthPane->toggle->setAutoRaise(true);
             monthPane->toggle->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
@@ -525,16 +659,31 @@ void CacheBrowserWindow::setYearExpanded(YearPane *pane, bool expanded)
             monthPane->contentLayout->setContentsMargins(0, 0, 0, 0);
             monthPane->contentLayout->setSizeConstraint(QLayout::SetNoConstraint);
             monthPane->content->hide();
-            monthLayout->addWidget(monthPane->toggle);
+            monthHeaderLayout->addWidget(monthPane->selection);
+            monthHeaderLayout->addWidget(monthPane->toggle, 1);
+            monthLayout->addWidget(monthPane->header);
             monthLayout->addWidget(monthPane->content);
             pane->contentLayout->addWidget(monthPane->container);
             pane->months.append(monthPane);
             connect(monthPane->toggle, &QToolButton::toggled, this,
                     [this, monthPane](bool monthExpanded) { setMonthExpanded(monthPane, monthExpanded); });
+            connect(monthPane->selection, &QCheckBox::toggled, this, [this, pane, monthPane](bool selected) {
+                if (!selected && m_selectedImages.isYearSelected(pane->year)) {
+                    QStringList allMonths;
+                    for (const MonthPane *candidate : std::as_const(pane->months))
+                        allMonths.append(candidate->month);
+                    m_selectedImages.excludeMonthFromSelectedYear(pane->year, monthPane->month, allMonths);
+                } else {
+                    m_selectedImages.setMonthSelected(pane->year, monthPane->month, selected);
+                }
+                updateSelectionControls(pane);
+                emit selectionChanged();
+            });
             if (m_monthsToRestore.contains(pane->year + QLatin1Char('/') + month))
                 monthPane->toggle->setChecked(true);
         }
     }
+    updateSelectionControls(pane);
     if (m_scrollPrefetchTimer)
         m_scrollPrefetchTimer->start();
 }
@@ -547,21 +696,71 @@ void CacheBrowserWindow::setMonthExpanded(MonthPane *pane, bool expanded)
     pane->toggle->setArrowType(expanded ? Qt::DownArrow : Qt::RightArrow);
     pane->content->setVisible(expanded);
     if (expanded && !pane->library) {
-        pane->library = new ImageLibraryWidget(m_cache, pane->year, pane->month, m_dateMode,
+        pane->library = new ImageLibraryWidget(m_cache, &m_selectedImages, pane->year, pane->month, m_dateMode,
                                                m_scrollArea, pane->content);
         pane->contentLayout->addWidget(pane->library);
         connect(pane->library, &ImageLibraryWidget::openImageRequested, this, [this](const QString &path) {
             clearSelection();
             emit openImageRequested(path);
         });
-        connect(pane->library, &ImageLibraryWidget::selectionChanged,
-                this, &CacheBrowserWindow::selectionChanged);
-        connect(pane->library, &ImageLibraryWidget::refreshRequested,
-                this, &CacheBrowserWindow::refresh, Qt::QueuedConnection);
+        connect(pane->library, &ImageLibraryWidget::selectionChanged, this, [this]() {
+            updateSelectionControls();
+            emit selectionChanged();
+        });
+        connect(pane->library, &ImageLibraryWidget::hideSelectionRequested,
+                this, &CacheBrowserWindow::hideSelectedImages);
+        connect(pane->library, &ImageLibraryWidget::deleteSelectionRequested,
+                this, &CacheBrowserWindow::deleteSelectedImages);
         pane->library->refresh();
     }
     if (m_scrollPrefetchTimer)
         m_scrollPrefetchTimer->start();
+}
+
+void CacheBrowserWindow::updateSelectionControls(YearPane *onlyPane)
+{
+    const auto updatePane = [this](YearPane *pane) {
+        if (!pane)
+            return;
+        QStringList monthNames;
+        for (const MonthPane *monthPane : std::as_const(pane->months))
+            monthNames.append(monthPane->month);
+
+        Qt::CheckState yearState = Qt::Unchecked;
+        if (m_selectedImages.isYearSelected(pane->year)) {
+            yearState = m_selectedImages.hasExcludedImages(pane->year) ? Qt::PartiallyChecked : Qt::Checked;
+        } else if (m_selectedImages.hasEveryMonthSelected(pane->year, monthNames)) {
+            yearState = m_selectedImages.hasExcludedImages(pane->year) ? Qt::PartiallyChecked : Qt::Checked;
+        } else if (m_selectedImages.hasAnyMonthSelected(pane->year)) {
+            yearState = Qt::PartiallyChecked;
+        } else if (m_selectedImages.hasExplicitImages(pane->year)) {
+            yearState = Qt::PartiallyChecked;
+        }
+        {
+            const QSignalBlocker blocker(pane->selection);
+            pane->selection->setCheckState(yearState);
+        }
+
+        for (MonthPane *monthPane : std::as_const(pane->months)) {
+            const bool scopeSelected = m_selectedImages.isMonthSelected(pane->year, monthPane->month);
+            Qt::CheckState monthState = Qt::Unchecked;
+            if (scopeSelected)
+                monthState = m_selectedImages.hasExcludedImages(pane->year, monthPane->month)
+                    ? Qt::PartiallyChecked : Qt::Checked;
+            else if (m_selectedImages.hasExplicitImages(pane->year, monthPane->month))
+                monthState = Qt::PartiallyChecked;
+            const QSignalBlocker blocker(monthPane->selection);
+            monthPane->selection->setCheckState(monthState);
+            if (monthPane->library)
+                monthPane->library->updateSelectionAppearance();
+        }
+    };
+    if (onlyPane) {
+        updatePane(onlyPane);
+        return;
+    }
+    for (YearPane *pane : std::as_const(m_yearPanes))
+        updatePane(pane);
 }
 
 void CacheBrowserWindow::checkScrollPrefetch()

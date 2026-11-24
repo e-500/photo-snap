@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Photo Snap
+Comment=Browse and organize your photo archive
+Exec=photo-snap %f
+Icon=photosnap
+Terminal=false
+Categories=Graphics;Photography;
+MimeType=image/jpeg;image/png;image/tiff;image/bmp;image/webp;

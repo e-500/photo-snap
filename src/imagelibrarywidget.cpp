@@ -18,13 +18,10 @@
 
 #include "imagelibrarywidget.h"
 
-#include <QFile>
-#include <QFileInfo>
 #include <QFrame>
 #include <QGridLayout>
 #include <QImage>
 #include <QLabel>
-#include <QMessageBox>
 #include <QMouseEvent>
 #include <QPixmap>
 #include <QResizeEvent>
@@ -80,9 +77,10 @@ private:
 };
 }
 
-ImageLibraryWidget::ImageLibraryWidget(ImageCache *cache, QString year, QString month, ImageDateMode dateMode,
+ImageLibraryWidget::ImageLibraryWidget(ImageCache *cache, SelectedImages *selection, QString year, QString month,
+                                       ImageDateMode dateMode,
                                        QScrollArea *scrollArea, QWidget *parent)
-    : QWidget(parent), m_cache(cache), m_year(std::move(year)), m_month(std::move(month)),
+    : QWidget(parent), m_cache(cache), m_selection(selection), m_year(std::move(year)), m_month(std::move(month)),
       m_dateMode(dateMode), m_scrollArea(scrollArea)
 {
     setMinimumWidth(0);
@@ -115,8 +113,7 @@ ImageLibraryWidget::ImageLibraryWidget(ImageCache *cache, QString year, QString 
 
 void ImageLibraryWidget::refresh()
 {
-    const bool hadSelection = !m_selectedPaths.isEmpty();
-    m_selectedPaths.clear();
+    const bool hadSelection = m_selection && m_selection->hasSelection();
     m_thumbnailPaths.clear();
     m_thumbnailEntryIndices.clear();
     m_selectionAnchor = -1;
@@ -146,22 +143,21 @@ void ImageLibraryWidget::refresh()
         emit selectionChanged();
 }
 
-QStringList ImageLibraryWidget::selectedPaths() const
-{
-    QStringList paths = m_selectedPaths.values();
-    paths.sort(Qt::CaseInsensitive);
-    return paths;
-}
-
 void ImageLibraryWidget::clearSelection()
 {
-    if (m_selectedPaths.isEmpty())
-        return;
-    m_selectedPaths.clear();
     m_selectionAnchor = -1;
-    for (QLabel *thumbnail : std::as_const(m_thumbnails))
-        thumbnail->setStyleSheet(QStringLiteral("border: 2px solid #454b55; background: #202329;"));
-    emit selectionChanged();
+    updateSelectionAppearance();
+}
+
+void ImageLibraryWidget::updateSelectionAppearance()
+{
+    for (int index = 0; index < m_thumbnails.size(); ++index) {
+        const bool selected = m_selection &&
+            m_selection->isImageSelected(m_thumbnailPaths.at(index), m_year, m_month);
+        m_thumbnails.at(index)->setStyleSheet(selected
+            ? QStringLiteral("border: 2px solid #55aaff; background: #202329;")
+            : QStringLiteral("border: 2px solid #454b55; background: #202329;"));
+    }
 }
 
 void ImageLibraryWidget::loadMoreDatabaseEntries()
@@ -193,7 +189,9 @@ void ImageLibraryWidget::loadMoreThumbnails()
             emit openImageRequested(path);
         }, this);
         label->setFrameShape(QFrame::NoFrame);
-        label->setStyleSheet(QStringLiteral("border: 2px solid #454b55; background: #202329;"));
+        const bool selected = m_selection && m_selection->isImageSelected(metadata.path, m_year, m_month);
+        label->setStyleSheet(selected ? QStringLiteral("border: 2px solid #55aaff; background: #202329;")
+                                      : QStringLiteral("border: 2px solid #454b55; background: #202329;"));
         label->setAlignment(Qt::AlignCenter);
         m_thumbnails.append(label);
         m_thumbnailImages.append(thumbnail);
@@ -295,7 +293,9 @@ void ImageLibraryWidget::arrangeThumbnails()
         QLabel *label = m_thumbnails.at(index);
         m_gridLayout->removeWidget(label);
         label->setFixedSize(m_cellSize, m_cellSize);
-        label->setStyleSheet(m_selectedPaths.contains(m_thumbnailPaths.at(index))
+        const bool selected = m_selection &&
+            m_selection->isImageSelected(m_thumbnailPaths.at(index), m_year, m_month);
+        label->setStyleSheet(selected
                                  ? QStringLiteral("border: 2px solid #55aaff; background: #202329;")
                                  : QStringLiteral("border: 2px solid #454b55; background: #202329;"));
         if (m_thumbnailImages.at(index).isNull()) {
@@ -315,76 +315,39 @@ void ImageLibraryWidget::selectThumbnail(QWidget *thumbnail, const QString &path
     const int clickedIndex = m_thumbnailPaths.indexOf(path);
     if (clickedIndex < 0)
         return;
+    if (!m_selection)
+        return;
     const bool control = modifiers.testFlag(Qt::ControlModifier) || modifiers.testFlag(Qt::MetaModifier);
     const bool shift = modifiers.testFlag(Qt::ShiftModifier);
     if (shift && m_selectionAnchor >= 0) {
         if (!control)
-            m_selectedPaths.clear();
+            m_selection->clear();
         const int first = qMin(m_selectionAnchor, clickedIndex);
         const int last = qMax(m_selectionAnchor, clickedIndex);
         for (int index = first; index <= last; ++index)
-            m_selectedPaths.insert(m_thumbnailPaths.at(index));
+            m_selection->setImageSelected(m_thumbnailPaths.at(index), m_year, m_month, true);
     } else if (control) {
-        if (m_selectedPaths.contains(path))
-            m_selectedPaths.remove(path);
-        else
-            m_selectedPaths.insert(path);
+        m_selection->toggleImage(path, m_year, m_month);
         m_selectionAnchor = clickedIndex;
     } else {
-        m_selectedPaths.clear();
-        m_selectedPaths.insert(path);
+        m_selection->clear();
+        m_selection->setImageSelected(path, m_year, m_month, true);
         m_selectionAnchor = clickedIndex;
     }
-    for (int index = 0; index < m_thumbnails.size(); ++index) {
-        m_thumbnails.at(index)->setStyleSheet(m_selectedPaths.contains(m_thumbnailPaths.at(index))
-            ? QStringLiteral("border: 2px solid #55aaff; background: #202329;")
-            : QStringLiteral("border: 2px solid #454b55; background: #202329;"));
-    }
+    updateSelectionAppearance();
     emit selectionChanged();
 }
 
 void ImageLibraryWidget::hideSelectedThumbnail()
 {
-    if (m_selectedPaths.isEmpty() || !m_cache)
-        return;
-    QStringList failures;
-    for (const QString &path : std::as_const(m_selectedPaths)) {
-        if (!m_cache->hideImage(path))
-            failures.append(QStringLiteral("%1: %2").arg(path, m_cache->errorString()));
-    }
-    emit refreshRequested();
-    if (!failures.isEmpty())
-        QMessageBox::warning(this, tr("Could not hide some photos"), failures.join(QLatin1Char('\n')));
+    if (m_selection && m_selection->hasSelection())
+        emit hideSelectionRequested();
 }
 
 void ImageLibraryWidget::deleteSelectedImage()
 {
-    if (m_selectedPaths.isEmpty() || !m_cache)
-        return;
-    QStringList paths;
-    for (const QString &path : std::as_const(m_thumbnailPaths)) {
-        if (m_selectedPaths.contains(path))
-            paths.append(path);
-    }
-    const auto answer = QMessageBox::question(
-        this, tr("Delete photo permanently?"),
-        tr("This will permanently delete %n selected image file(s):\n\n%1\n\nContinue?", nullptr,
-           paths.size()).arg(paths.join(QLatin1Char('\n'))),
-        QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
-    if (answer != QMessageBox::Yes)
-        return;
-    QStringList failures;
-    for (const QString &path : std::as_const(paths)) {
-        if (QFileInfo::exists(path) && !QFile::remove(path)) {
-            failures.append(tr("Could not delete file: %1").arg(path));
-            continue;
-        }
-        if (!m_cache->deleteImageEntry(path))
-            failures.append(tr("Could not remove cache entry for %1: %2").arg(path, m_cache->errorString()));
-    }
-    emit refreshRequested();
-    if (!failures.isEmpty())
-        QMessageBox::warning(this, tr("Some photos could not be deleted"), failures.join(QLatin1Char('\n')));
+    if (m_selection && m_selection->hasSelection())
+        emit deleteSelectionRequested();
 }
 
 void ImageLibraryWidget::resizeEvent(QResizeEvent *event)

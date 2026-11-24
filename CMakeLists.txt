@@ -13,8 +13,19 @@ set(CMAKE_AUTORCC ON)
 find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Widgets Sql Network)
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Widgets Sql Network)
 
+set(PHOTOSNAP_PLATFORM_ICON)
+if(WIN32)
+    enable_language(RC)
+    list(APPEND PHOTOSNAP_PLATFORM_ICON resources/photosnap.rc)
+elseif(APPLE)
+    set_source_files_properties(resources/photosnap.icns PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
+    list(APPEND PHOTOSNAP_PLATFORM_ICON resources/photosnap.icns)
+endif()
+
 add_executable(photo-snap WIN32 MACOSX_BUNDLE
     src/main.cpp
+    resources/photosnap.qrc
+    ${PHOTOSNAP_PLATFORM_ICON}
     src/mainwindow.cpp
     src/mainwindow.h
     src/photoview.cpp
@@ -27,7 +38,12 @@ add_executable(photo-snap WIN32 MACOSX_BUNDLE
     src/cachebrowserwindow.h
     src/imagelibrarywidget.cpp
     src/imagelibrarywidget.h
+    src/selectedimages.h
 )
+
+if(APPLE)
+    set_target_properties(photo-snap PROPERTIES MACOSX_BUNDLE_ICON_FILE photosnap.icns)
+endif()
 
 target_link_libraries(photo-snap PRIVATE Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Sql Qt${QT_VERSION_MAJOR}::Network)
 
@@ -48,6 +64,14 @@ install(TARGETS photo-snap
     BUNDLE DESTINATION .
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
+
+if(UNIX AND NOT APPLE)
+    install(FILES resources/photosnap.png
+        DESTINATION share/icons/hicolor/512x512/apps
+        RENAME photosnap.png
+    )
+    install(FILES resources/photo-snap.desktop DESTINATION share/applications)
+endif()
 
 # Qt 6.3 and newer can generate a platform-aware deployment script that
 # copies Qt libraries, plugins, and runtime dependencies beside the app.

@@ -24,6 +24,7 @@
 #include <QGraphicsPixmapItem>
 #include <QGraphicsScene>
 #include <QMimeData>
+#include <QMouseEvent>
 #include <QResizeEvent>
 #include <QScrollBar>
 #include <QUrl>
@@ -68,6 +69,13 @@ void PhotoView::clearPhoto()
 bool PhotoView::hasPhoto() const
 {
     return m_photoItem != nullptr;
+}
+
+void PhotoView::mousePressEvent(QMouseEvent *event)
+{
+    if (event->button() == Qt::LeftButton)
+        emit clicked();
+    QGraphicsView::mousePressEvent(event);
 }
 
 qreal PhotoView::zoomFactor() const

@@ -19,9 +19,9 @@
 #pragma once
 
 #include "imagecache.h"
+#include "selectedimages.h"
 
 #include <QImage>
-#include <QSet>
 #include <QVector>
 #include <QWidget>
 
@@ -35,17 +35,18 @@ class ImageLibraryWidget final : public QWidget
     Q_OBJECT
 
 public:
-    ImageLibraryWidget(ImageCache *cache, QString year, QString month, ImageDateMode dateMode,
+    ImageLibraryWidget(ImageCache *cache, SelectedImages *selection, QString year, QString month, ImageDateMode dateMode,
                        QScrollArea *scrollArea, QWidget *parent = nullptr);
     void refresh();
     void checkScrollPrefetch();
-    QStringList selectedPaths() const;
     void clearSelection();
+    void updateSelectionAppearance();
 
 signals:
     void openImageRequested(const QString &path);
-    void refreshRequested();
     void selectionChanged();
+    void hideSelectionRequested();
+    void deleteSelectionRequested();
 
 protected:
     void resizeEvent(QResizeEvent *event) override;
@@ -59,13 +60,13 @@ private:
     void deleteSelectedImage();
 
     ImageCache *m_cache = nullptr;
+    SelectedImages *m_selection = nullptr;
     QString m_year;
     QString m_month;
     ImageDateMode m_dateMode = ImageDateMode::ShootingDate;
     QScrollArea *m_scrollArea = nullptr;
     QGridLayout *m_gridLayout = nullptr;
     QLabel *m_emptyLabel = nullptr;
-    QSet<QString> m_selectedPaths;
     QVector<QString> m_thumbnailPaths;
     QVector<int> m_thumbnailEntryIndices;
     QVector<ImageMetadata> m_loadedImages;

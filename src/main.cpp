@@ -28,6 +28,7 @@ int main(int argc, char *argv[])
     QCoreApplication::setApplicationName(QStringLiteral("Photo Snap"));
     QCoreApplication::setApplicationVersion(QStringLiteral("1.0.0"));
     QCoreApplication::setOrganizationName(QStringLiteral("Photo Snap"));
+    app.setWindowIcon(QIcon(QStringLiteral(":/icons/photosnap.png")));
 
     QCommandLineParser parser;
     parser.setApplicationDescription(QStringLiteral("A simple desktop photo viewer."));
