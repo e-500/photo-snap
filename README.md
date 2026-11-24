@@ -4,14 +4,18 @@
 
 [![Build Windows](https://github.com/e-500/photo-snap/actions/workflows/build-windows.yml/badge.svg)](https://github.com/e-500/photo-snap/actions/workflows/build-windows.yml)
 [![Build macOS](https://github.com/e-500/photo-snap/actions/workflows/build-macos.yml/badge.svg)](https://github.com/e-500/photo-snap/actions/workflows/build-macos.yml)
+[![Build Linux](https://github.com/e-500/photo-snap/actions/workflows/build-linux.yml/badge.svg)](https://github.com/e-500/photo-snap/actions/workflows/build-linux.yml)
 
 Photo Snap is a completely free, open-source, cross-platform desktop application for Windows, macOS, and GNU/Linux, built for managing a domestic picture archive. Bring photos from many folders into one handy, date-based library while the originals stay in their folders. Browse a fast local thumbnail catalog, find a moment by year and month, and copy the photos you want into an export folder.
 
 No subscription. No cloud library. No reshuffling your archive.
 
-The interface is available in **English (UK)**, **English (US)**, **Italian**, **German**, **French**, and **Spanish**. Use the language selector in the photo bar; restart Photo Snap to apply a change. English (UK) is the default.
+Downloads:
+- [Windows installer](https://github.com/e-500/photo-snap/actions/runs/45400452983/artifacts/14923421359)
+- [MacOS package](https://github.com/e-500/photo-snap/actions/runs/45400399523/artifacts/14924505785)
+- [Linux package](https://github.com/e-500/photo-snap/actions/runs/45405741332/artifacts/14926045728)
 
-**Platform setup guides and ready-to-install packages are coming soon.** For now, build Photo Snap from source using the instructions below.
+The interface is available in **English (UK)**, **English (US)**, **Italian**, **German**, **French**, and **Spanish**. Use the language selector in the photo bar; restart Photo Snap to apply a change. English (UK) is the default.
 
 ## One library for all your folders
 
