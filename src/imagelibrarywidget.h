@@ -21,6 +21,7 @@
 #include "imagecache.h"
 #include "selectedimages.h"
 
+#include <QHash>
 #include <QImage>
 #include <QVector>
 #include <QWidget>
@@ -73,6 +74,7 @@ private:
     QVector<ImageMetadata> m_loadedImages;
     QVector<QLabel *> m_thumbnails;
     QVector<QImage> m_thumbnailImages;
+    QHash<QString, QLabel *> m_dayHeaders;
     int m_selectionAnchor = -1;
     int m_nextDatabaseOffset = 0;
     int m_nextThumbnailEntry = 0;

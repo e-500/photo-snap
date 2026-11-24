@@ -132,6 +132,7 @@ ImageLibraryWidget::ImageLibraryWidget(ImageCache *cache, SelectedImages *select
 void ImageLibraryWidget::refresh()
 {
     const bool hadSelection = m_selection && m_selection->hasSelection();
+    m_dayHeaders.clear();
     m_thumbnailPaths.clear();
     m_thumbnailEntryIndices.clear();
     m_selectionAnchor = -1;
@@ -193,7 +194,6 @@ void ImageLibraryWidget::loadMoreDatabaseEntries()
 
 void ImageLibraryWidget::loadMoreThumbnails()
 {
-    const int firstNewThumbnail = m_thumbnails.size();
     const int targetEntry = qMin(m_nextThumbnailEntry + ThumbnailBatchSize, m_loadedImages.size());
     while (m_nextThumbnailEntry < targetEntry) {
         const int metadataIndex = m_nextThumbnailEntry++;
@@ -218,21 +218,7 @@ void ImageLibraryWidget::loadMoreThumbnails()
         m_thumbnailPaths.append(metadata.path);
         m_thumbnailEntryIndices.append(metadataIndex);
     }
-    if (firstNewThumbnail == 0) {
-        arrangeThumbnails();
-    } else {
-        m_gridLayout->removeWidget(m_emptyLabel);
-        m_emptyLabel->hide();
-        const int innerSize = qMax(1, m_cellSize - 4);
-        for (int index = firstNewThumbnail; index < m_thumbnails.size(); ++index) {
-            QLabel *label = m_thumbnails.at(index);
-            label->setFixedSize(m_cellSize, m_cellSize);
-            const QImage &image = m_thumbnailImages.at(index);
-            label->setPixmap(QPixmap::fromImage(image.scaled(
-                innerSize, innerSize, Qt::IgnoreAspectRatio, Qt::SmoothTransformation)));
-            m_gridLayout->addWidget(label, index / m_columns, index % m_columns);
-        }
-    }
+    arrangeThumbnails();
 }
 
 QString ImageLibraryWidget::thumbnailToolTip(const ImageMetadata &metadata) const
@@ -322,6 +308,10 @@ void ImageLibraryWidget::arrangeThumbnails()
     }
     m_gridLayout->removeWidget(m_emptyLabel);
     m_emptyLabel->hide();
+    for (QLabel *header : m_dayHeaders)
+        m_gridLayout->removeWidget(header);
+    for (QLabel *thumbnail : m_thumbnails)
+        m_gridLayout->removeWidget(thumbnail);
     int left = 0, top = 0, right = 0, bottom = 0;
     m_gridLayout->getContentsMargins(&left, &top, &right, &bottom);
     Q_UNUSED(bottom);
@@ -335,9 +325,41 @@ void ImageLibraryWidget::arrangeThumbnails()
     m_columns = qMax(1, (availableWidth + gap) / (minCellWidth + gap));
     m_cellSize = qMax(minCellWidth, (availableWidth - gap * (m_columns - 1)) / m_columns);
     const int innerSize = m_cellSize - borderWidth * 2;
+    int row = 0;
+    int column = 0;
+    QString activeDay;
     for (int index = 0; index < m_thumbnails.size(); ++index) {
         QLabel *label = m_thumbnails.at(index);
-        m_gridLayout->removeWidget(label);
+        const ImageMetadata &metadata = m_loadedImages.at(m_thumbnailEntryIndices.at(index));
+        const QString dateValue = m_dateMode == ImageDateMode::CreationDate
+            ? metadata.creationDateTime : metadata.shootingDateTime;
+        const QDateTime dateTime = QDateTime::fromString(dateValue, Qt::ISODate);
+        const QString dayKey = dateTime.isValid()
+            ? dateTime.date().toString(Qt::ISODate) : QStringLiteral("undated");
+        if (dayKey != activeDay) {
+            if (column != 0) {
+                ++row;
+                column = 0;
+            }
+            QLabel *header = m_dayHeaders.value(dayKey, nullptr);
+            if (!header) {
+                header = new QLabel(m_emptyLabel->parentWidget());
+                header->setContentsMargins(2, 12, 2, 5);
+                QFont font = header->font();
+                font.setBold(true);
+                header->setFont(font);
+                header->setStyleSheet(QStringLiteral(
+                    "color: #d9dde5; border-bottom: 1px solid #454b55;"));
+                m_dayHeaders.insert(dayKey, header);
+            }
+            header->setText(dateTime.isValid()
+                ? QLocale().toString(dateTime.date(), QStringLiteral("dddd, d MMMM yyyy"))
+                : tr("Undated"));
+            m_gridLayout->addWidget(header, row, 0, 1, m_columns);
+            ++row;
+            column = 0;
+            activeDay = dayKey;
+        }
         label->setFixedSize(m_cellSize, m_cellSize);
         const bool selected = m_selection &&
             m_selection->isImageSelected(m_thumbnailPaths.at(index), m_year, m_month);
@@ -350,7 +372,11 @@ void ImageLibraryWidget::arrangeThumbnails()
             label->setPixmap(QPixmap::fromImage(m_thumbnailImages.at(index).scaled(
                 innerSize, innerSize, Qt::IgnoreAspectRatio, Qt::SmoothTransformation)));
         }
-        m_gridLayout->addWidget(label, index / m_columns, index % m_columns);
+        m_gridLayout->addWidget(label, row, column);
+        if (++column == m_columns) {
+            ++row;
+            column = 0;
+        }
     }
 }
 
