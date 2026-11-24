@@ -46,8 +46,6 @@ public:
 signals:
     void openImageRequested(const QString &path);
     void selectionChanged();
-    void hideSelectionRequested();
-    void deleteSelectionRequested();
 
 protected:
     void resizeEvent(QResizeEvent *event) override;
@@ -57,8 +55,6 @@ private:
     void loadMoreDatabaseEntries();
     void loadMoreThumbnails();
     void selectThumbnail(QWidget *thumbnail, const QString &path, Qt::KeyboardModifiers modifiers);
-    void hideSelectedThumbnail();
-    void deleteSelectedImage();
     QString thumbnailToolTip(const ImageMetadata &metadata) const;
 
     ImageCache *m_cache = nullptr;

@@ -54,6 +54,7 @@
 #include <QPainter>
 #include <QPainterPath>
 #include <QPalette>
+#include <QPlainTextEdit>
 #include <QPushButton>
 #include <QStandardPaths>
 #include <QStatusBar>
@@ -419,8 +420,27 @@ void MainWindow::openImage(const QString &path)
     reader.setAutoTransform(true);
     const QImage image = reader.read();
     if (image.isNull()) {
-        QMessageBox::warning(this, tr("Unable to open photo"),
-                             tr("Could not read “%1”.\n%2").arg(QFileInfo(path).fileName(), reader.errorString()));
+        QDialog dialog(this);
+        dialog.setWindowTitle(tr("Unable to open photo"));
+        dialog.setMinimumWidth(460);
+        auto *layout = new QVBoxLayout(&dialog);
+        auto *message = new QLabel(
+            tr("Could not read “%1”.\n%2").arg(QFileInfo(path).fileName(), reader.errorString()), &dialog);
+        message->setWordWrap(true);
+        layout->addWidget(message);
+        layout->addWidget(new QLabel(tr("Full path"), &dialog));
+        auto *pathText = new QPlainTextEdit(&dialog);
+        pathText->setReadOnly(true);
+        pathText->setPlainText(QFileInfo(path).absoluteFilePath());
+        pathText->setLineWrapMode(QPlainTextEdit::WidgetWidth);
+        pathText->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
+        pathText->setMinimumHeight(64);
+        pathText->setMaximumHeight(112);
+        layout->addWidget(pathText);
+        auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok, &dialog);
+        connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+        layout->addWidget(buttons);
+        dialog.exec();
         return;
     }
 

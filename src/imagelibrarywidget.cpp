@@ -31,8 +31,6 @@
 #include <QResizeEvent>
 #include <QScrollArea>
 #include <QScrollBar>
-#include <QShortcut>
-#include <QKeySequence>
 #include <QLocale>
 #include <QSizePolicy>
 #include <QSizePolicy>
@@ -121,12 +119,6 @@ ImageLibraryWidget::ImageLibraryWidget(ImageCache *cache, SelectedImages *select
     m_emptyLabel->setMinimumSize(300, 150);
     m_gridLayout->addWidget(m_emptyLabel, 0, 0);
 
-    auto *hideShortcut = new QShortcut(QKeySequence(Qt::Key_Delete), this);
-    hideShortcut->setContext(Qt::WidgetWithChildrenShortcut);
-    connect(hideShortcut, &QShortcut::activated, this, &ImageLibraryWidget::hideSelectedThumbnail);
-    auto *deleteShortcut = new QShortcut(QKeySequence(Qt::SHIFT | Qt::Key_Delete), this);
-    deleteShortcut->setContext(Qt::WidgetWithChildrenShortcut);
-    connect(deleteShortcut, &QShortcut::activated, this, &ImageLibraryWidget::deleteSelectedImage);
 }
 
 void ImageLibraryWidget::refresh()
@@ -408,18 +400,6 @@ void ImageLibraryWidget::selectThumbnail(QWidget *thumbnail, const QString &path
     }
     updateSelectionAppearance();
     emit selectionChanged();
-}
-
-void ImageLibraryWidget::hideSelectedThumbnail()
-{
-    if (m_selection && m_selection->hasSelection())
-        emit hideSelectionRequested();
-}
-
-void ImageLibraryWidget::deleteSelectedImage()
-{
-    if (m_selection && m_selection->hasSelection())
-        emit deleteSelectionRequested();
 }
 
 void ImageLibraryWidget::resizeEvent(QResizeEvent *event)

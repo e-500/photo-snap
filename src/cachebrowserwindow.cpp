@@ -196,6 +196,12 @@ CacheBrowserWindow::CacheBrowserWindow(ImageCache *cache, QWidget *parent)
     m_scrollArea = new OverlayScrollArea(content);
     m_scrollArea->setWidgetResizable(true);
     m_scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    auto *hideShortcut = new QShortcut(QKeySequence(Qt::Key_Delete), m_scrollArea);
+    hideShortcut->setContext(Qt::WidgetWithChildrenShortcut);
+    connect(hideShortcut, &QShortcut::activated, this, &CacheBrowserWindow::hideSelectedImages);
+    auto *deleteShortcut = new QShortcut(QKeySequence(Qt::SHIFT | Qt::Key_Delete), m_scrollArea);
+    deleteShortcut->setContext(Qt::WidgetWithChildrenShortcut);
+    connect(deleteShortcut, &QShortcut::activated, this, &CacheBrowserWindow::deleteSelectedImages);
     m_scrollPrefetchTimer = new QTimer(this);
     m_scrollPrefetchTimer->setSingleShot(true);
     m_scrollPrefetchTimer->setInterval(35);
@@ -567,6 +573,8 @@ void CacheBrowserWindow::clearSelection()
 
 void CacheBrowserWindow::hideSelectedImages()
 {
+    if (!m_selectedImages.hasSelection())
+        return;
     const QVector<ImageMetadata> images = getSelectedImages();
     QStringList failures;
     for (const ImageMetadata &image : images) {
@@ -710,10 +718,6 @@ void CacheBrowserWindow::setMonthExpanded(MonthPane *pane, bool expanded)
             updateSelectionControls();
             emit selectionChanged();
         });
-        connect(pane->library, &ImageLibraryWidget::hideSelectionRequested,
-                this, &CacheBrowserWindow::hideSelectedImages);
-        connect(pane->library, &ImageLibraryWidget::deleteSelectionRequested,
-                this, &CacheBrowserWindow::deleteSelectedImages);
         pane->library->refresh();
     }
     if (m_scrollPrefetchTimer)
