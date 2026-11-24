@@ -325,11 +325,13 @@ quint32 read32(const QByteArray &bytes, int offset, bool littleEndian)
 }
 
 QByteArray makeMetadataExif(const QString &date, const QString &author, const QString &copyright,
+                            bool hasGpsPosition, double latitude, double longitude,
                             bool littleEndian, QVector<int> *relativeOffsetLocations = nullptr,
                             int *nextIfdLocation = nullptr)
 {
     const bool hasDate = !date.isEmpty();
-    const int ifd0Count = (hasDate ? 2 : 0) + (!author.isEmpty() ? 1 : 0) + (!copyright.isEmpty() ? 1 : 0);
+    const int ifd0Count = (hasDate ? 2 : 0) + (!author.isEmpty() ? 1 : 0) +
+                          (!copyright.isEmpty() ? 1 : 0) + (hasGpsPosition ? 1 : 0);
     QByteArray tiff(8 + 2 + ifd0Count * 12 + 4, '\0');
     tiff[0] = littleEndian ? 'I' : 'M';
     tiff[1] = littleEndian ? 'I' : 'M';
@@ -358,8 +360,15 @@ QByteArray makeMetadataExif(const QString &date, const QString &author, const QS
     if (tiff.size() % 2 != 0)
         tiff.append('\0');
 
+    int exifPointerEntry = -1;
     if (hasDate) {
-        const int exifPointerEntry = 10 + entryIndex++ * 12;
+        exifPointerEntry = 10 + entryIndex++ * 12;
+    }
+    int gpsPointerEntry = -1;
+    if (hasGpsPosition)
+        gpsPointerEntry = 10 + entryIndex++ * 12;
+
+    if (hasDate) {
         const int exifIfdOffset = static_cast<int>(tiff.size());
         write16(&tiff, exifIfdOffset, 2, littleEndian);
         write16(&tiff, exifIfdOffset + 2, 0x9003, littleEndian);
@@ -386,6 +395,71 @@ QByteArray makeMetadataExif(const QString &date, const QString &author, const QS
             relativeOffsetLocations->append(exifIfdOffset + 10);
             relativeOffsetLocations->append(exifIfdOffset + 22);
         }
+    }
+
+    if (hasGpsPosition) {
+        const int gpsIfdOffset = static_cast<int>(tiff.size());
+        write16(&tiff, gpsPointerEntry, 0x8825, littleEndian);
+        write16(&tiff, gpsPointerEntry + 2, 4, littleEndian);
+        write32(&tiff, gpsPointerEntry + 4, 1, littleEndian);
+        write32(&tiff, gpsPointerEntry + 8, static_cast<quint32>(gpsIfdOffset), littleEndian);
+        if (relativeOffsetLocations)
+            relativeOffsetLocations->append(gpsPointerEntry + 8);
+
+        constexpr int gpsEntryCount = 5;
+        const int gpsIfdSize = 2 + gpsEntryCount * 12 + 4;
+        tiff.resize(gpsIfdOffset + gpsIfdSize, '\0');
+        write16(&tiff, gpsIfdOffset, gpsEntryCount, littleEndian);
+        const auto entryOffset = [gpsIfdOffset](int index) { return gpsIfdOffset + 2 + index * 12; };
+
+        int entry = entryOffset(0);
+        write16(&tiff, entry, 0x0000, littleEndian);
+        write16(&tiff, entry + 2, 1, littleEndian);
+        write32(&tiff, entry + 4, 4, littleEndian);
+        tiff[entry + 8] = 2;
+        tiff[entry + 9] = 3;
+        tiff[entry + 10] = 0;
+        tiff[entry + 11] = 0;
+
+        const auto appendGpsRef = [&](int index, quint16 tag, char ref) {
+            const int refEntry = entryOffset(index);
+            write16(&tiff, refEntry, tag, littleEndian);
+            write16(&tiff, refEntry + 2, 2, littleEndian);
+            write32(&tiff, refEntry + 4, 2, littleEndian);
+            tiff[refEntry + 8] = ref;
+            tiff[refEntry + 9] = '\0';
+        };
+        appendGpsRef(1, 0x0001, latitude < 0.0 ? 'S' : 'N');
+        appendGpsRef(3, 0x0003, longitude < 0.0 ? 'W' : 'E');
+
+        const auto appendGpsCoordinate = [&](int index, quint16 tag, double coordinate) {
+            const int coordinateEntry = entryOffset(index);
+            write16(&tiff, coordinateEntry, tag, littleEndian);
+            write16(&tiff, coordinateEntry + 2, 5, littleEndian);
+            write32(&tiff, coordinateEntry + 4, 3, littleEndian);
+            const int coordinateOffset = static_cast<int>(tiff.size());
+            tiff.resize(coordinateOffset + 24, '\0');
+            write32(&tiff, coordinateEntry + 8, static_cast<quint32>(coordinateOffset), littleEndian);
+            if (relativeOffsetLocations)
+                relativeOffsetLocations->append(coordinateEntry + 8);
+
+            const double absoluteCoordinate = std::abs(coordinate);
+            const quint32 degrees = static_cast<quint32>(std::floor(absoluteCoordinate));
+            const double minuteValue = (absoluteCoordinate - degrees) * 60.0;
+            const quint32 minutes = static_cast<quint32>(std::floor(minuteValue));
+            constexpr quint32 secondsDenominator = 10000000;
+            const quint32 secondsNumerator = static_cast<quint32>(std::llround(
+                (minuteValue - minutes) * 60.0 * secondsDenominator));
+            const quint32 numerators[] = {degrees, minutes, secondsNumerator};
+            const quint32 denominators[] = {1, 1, secondsDenominator};
+            for (int part = 0; part < 3; ++part) {
+                write32(&tiff, coordinateOffset + part * 8, numerators[part], littleEndian);
+                write32(&tiff, coordinateOffset + part * 8 + 4, denominators[part], littleEndian);
+            }
+            tiff.resize(coordinateOffset + 24);
+        };
+        appendGpsCoordinate(2, 0x0002, latitude);
+        appendGpsCoordinate(4, 0x0004, longitude);
     }
     const int nextIfd = 10 + ifd0Count * 12;
     if (nextIfdLocation)
@@ -476,19 +550,38 @@ QString readImageCopyright(const QString &path)
     return readExif(path).copyright;
 }
 
+bool readImageGpsPosition(const QString &path, double *latitude, double *longitude)
+{
+    const ExifInfo exif = readExif(path);
+    if (!exif.hasGps)
+        return false;
+    if (latitude)
+        *latitude = exif.latitude;
+    if (longitude)
+        *longitude = exif.longitude;
+    return true;
+}
+
 bool writeImageShotDateTime(const QString &path, const QDateTime &dateTime, QString *error)
 {
     const ExifInfo existing = readExif(path);
-    return writeImageExifMetadata(path, dateTime, existing.author, existing.copyright, true, true, true, error);
+    return writeImageExifMetadata(path, dateTime, existing.author, existing.copyright,
+                                  true, true, true, false, existing.hasGps,
+                                  existing.latitude, existing.longitude, error);
 }
 
 bool writeImageExifMetadata(const QString &path, const QDateTime &dateTime, const QString &author,
                             const QString &copyright, bool updateDateTime, bool updateAuthor,
-                            bool updateCopyright, QString *error)
+                            bool updateCopyright, bool updateGpsPosition, bool hasGpsPosition,
+                            double latitude, double longitude, QString *error)
 {
     if (updateDateTime && !dateTime.isValid())
         return fail(error, QStringLiteral("Enter a valid date and time."));
-    if (!updateDateTime && !updateAuthor && !updateCopyright)
+    if (updateGpsPosition && hasGpsPosition &&
+        (!std::isfinite(latitude) || !std::isfinite(longitude) || std::abs(latitude) > 90.0 ||
+         std::abs(longitude) > 180.0))
+        return fail(error, QStringLiteral("Enter a valid GPS position."));
+    if (!updateDateTime && !updateAuthor && !updateCopyright && !updateGpsPosition)
         return fail(error, QStringLiteral("Select at least one metadata field to update."));
 
     const ExifInfo existing = readExif(path);
@@ -512,7 +605,11 @@ bool writeImageExifMetadata(const QString &path, const QDateTime &dateTime, cons
     }
     const QString finalAuthor = updateAuthor ? author.trimmed() : existing.author;
     const QString finalCopyright = updateCopyright ? copyright.trimmed() : existing.copyright;
-    const QByteArray metadataExif = makeMetadataExif(exifDate, finalAuthor, finalCopyright, true);
+    const bool finalHasGpsPosition = updateGpsPosition ? hasGpsPosition : existing.hasGps;
+    const double finalLatitude = updateGpsPosition ? latitude : existing.latitude;
+    const double finalLongitude = updateGpsPosition ? longitude : existing.longitude;
+    const QByteArray metadataExif = makeMetadataExif(exifDate, finalAuthor, finalCopyright,
+                                                     finalHasGpsPosition, finalLatitude, finalLongitude, true);
 
     if (bytes.size() >= 2 && static_cast<quint8>(bytes.at(0)) == 0xff &&
         static_cast<quint8>(bytes.at(1)) == 0xd8) {
@@ -560,7 +657,8 @@ bool writeImageExifMetadata(const QString &path, const QDateTime &dateTime, cons
             bytes.append('\0');
         QVector<int> offsetLocations;
         int nextIfdLocation = 0;
-        QByteArray appendedExif = makeMetadataExif(exifDate, finalAuthor, finalCopyright, littleEndian,
+        QByteArray appendedExif = makeMetadataExif(exifDate, finalAuthor, finalCopyright,
+                                                   finalHasGpsPosition, finalLatitude, finalLongitude, littleEndian,
                                                    &offsetLocations, &nextIfdLocation);
         write32(&bytes, 4, base + 8, littleEndian);
         for (const int location : std::as_const(offsetLocations))

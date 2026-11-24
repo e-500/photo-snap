@@ -17,7 +17,11 @@
  */
 
 #include "imagelibrarywidget.h"
+#include "imagemetadata.h"
 
+#include <QDateTime>
+#include <QEvent>
+#include <QFileInfo>
 #include <QFrame>
 #include <QGridLayout>
 #include <QImage>
@@ -29,6 +33,7 @@
 #include <QScrollBar>
 #include <QShortcut>
 #include <QKeySequence>
+#include <QLocale>
 #include <QSizePolicy>
 #include <QSizePolicy>
 #include <QVBoxLayout>
@@ -44,14 +49,25 @@ class ThumbnailLabel final : public QLabel
 {
 public:
     explicit ThumbnailLabel(std::function<void(QWidget *, Qt::KeyboardModifiers)> selectImage,
-                            std::function<void()> openImage, QWidget *parent = nullptr)
-        : QLabel(parent), m_selectImage(std::move(selectImage)), m_openImage(std::move(openImage))
+                            std::function<void()> openImage, std::function<QString()> toolTip,
+                            QWidget *parent = nullptr)
+        : QLabel(parent), m_selectImage(std::move(selectImage)), m_openImage(std::move(openImage)),
+          m_toolTip(std::move(toolTip))
     {
         setCursor(Qt::PointingHandCursor);
         setFocusPolicy(Qt::ClickFocus);
     }
 
 protected:
+    bool event(QEvent *event) override
+    {
+        if (event->type() == QEvent::Enter && !m_toolTipLoaded && m_toolTip) {
+            setToolTip(m_toolTip());
+            m_toolTipLoaded = true;
+        }
+        return QLabel::event(event);
+    }
+
     void mousePressEvent(QMouseEvent *event) override
     {
         if (event->button() == Qt::LeftButton && m_selectImage) {
@@ -74,6 +90,8 @@ protected:
 private:
     std::function<void(QWidget *, Qt::KeyboardModifiers)> m_selectImage;
     std::function<void()> m_openImage;
+    std::function<QString()> m_toolTip;
+    bool m_toolTipLoaded = false;
 };
 }
 
@@ -187,6 +205,8 @@ void ImageLibraryWidget::loadMoreThumbnails()
             selectThumbnail(widget, path, modifiers);
         }, [this, path = metadata.path]() {
             emit openImageRequested(path);
+        }, [this, metadata]() {
+            return thumbnailToolTip(metadata);
         }, this);
         label->setFrameShape(QFrame::NoFrame);
         const bool selected = m_selection && m_selection->isImageSelected(metadata.path, m_year, m_month);
@@ -213,6 +233,32 @@ void ImageLibraryWidget::loadMoreThumbnails()
             m_gridLayout->addWidget(label, index / m_columns, index % m_columns);
         }
     }
+}
+
+QString ImageLibraryWidget::thumbnailToolTip(const ImageMetadata &metadata) const
+{
+    QString shootingDate = metadata.shootingDateTime;
+    const QDateTime dateTime = QDateTime::fromString(metadata.shootingDateTime, Qt::ISODate);
+    if (dateTime.isValid())
+        shootingDate = QLocale().toString(dateTime, QLocale::ShortFormat);
+    if (shootingDate.isEmpty())
+        shootingDate = QStringLiteral("—");
+    const QString gpsPosition = metadata.hasGpsPosition
+        ? QStringLiteral("%1, %2").arg(QLocale().toString(metadata.gpsLatitude, 'f', 6),
+                                        QLocale().toString(metadata.gpsLongitude, 'f', 6))
+        : QStringLiteral("—");
+
+    QString author = readImageAuthor(metadata.path);
+    QString copyright = readImageCopyright(metadata.path);
+    if (author.isEmpty())
+        author = QStringLiteral("—");
+    if (copyright.isEmpty())
+        copyright = QStringLiteral("—");
+
+    return QStringLiteral("%1\n%2\n%3\n%4\n%5")
+        .arg(tr("Shooting date: %1").arg(shootingDate), tr("GPS location: %1").arg(gpsPosition),
+             tr("Author: %1").arg(author), tr("Copyright: %1").arg(copyright),
+             QFileInfo(metadata.path).fileName());
 }
 
 void ImageLibraryWidget::checkScrollPrefetch()

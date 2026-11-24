@@ -58,6 +58,7 @@ private:
     void selectThumbnail(QWidget *thumbnail, const QString &path, Qt::KeyboardModifiers modifiers);
     void hideSelectedThumbnail();
     void deleteSelectedImage();
+    QString thumbnailToolTip(const ImageMetadata &metadata) const;
 
     ImageCache *m_cache = nullptr;
     SelectedImages *m_selection = nullptr;

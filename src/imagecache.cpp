@@ -32,6 +32,7 @@
 #include <QUuid>
 #include <QVariant>
 
+#include <cmath>
 #include <utility>
 
 namespace {
@@ -48,6 +49,7 @@ constexpr quint8 ListImagesByMonthRequest = 10;
 constexpr quint8 FindHashRequest = 11;
 constexpr quint8 RelinkImageRequest = 12;
 constexpr quint8 UpdateHashRequest = 13;
+constexpr quint8 UpdateGpsRequest = 15;
 constexpr quint8 ListUnhashedPathsRequest = 14;
 constexpr quint32 MaximumResponseSize = 256u * 1024u * 1024u;
 
@@ -724,6 +726,45 @@ bool ImageCache::updateImageHash(const QString &path, const QByteArray &hash)
     return true;
 }
 
+bool ImageCache::updateImageGpsPosition(const QString &path, bool hasGpsPosition, double latitude, double longitude)
+{
+    if (!m_initialized && !initialize())
+        return false;
+    if (path.isEmpty() || (hasGpsPosition &&
+        (!std::isfinite(latitude) || !std::isfinite(longitude) || std::abs(latitude) > 90.0 ||
+         std::abs(longitude) > 180.0))) {
+        m_error = QStringLiteral("The image path or GPS position is invalid.");
+        return false;
+    }
+    if (!m_isServer) {
+        QByteArray request;
+        QDataStream stream(&request, QIODevice::WriteOnly);
+        stream << UpdateGpsRequest << path << hasGpsPosition << latitude << longitude;
+        QByteArray payload;
+        if (!sendRequestToService(request, &payload))
+            return false;
+        QDataStream response(payload);
+        bool success = false;
+        QString error;
+        bool changed = false;
+        response >> success >> error >> changed;
+        m_error = success ? QString() : error;
+        return success;
+    }
+
+    QSqlQuery query(m_databaseHolder->database);
+    query.prepare(QStringLiteral("UPDATE image_cache SET gps_latitude=:latitude, gps_longitude=:longitude WHERE path=:path"));
+    query.bindValue(QStringLiteral(":latitude"), hasGpsPosition ? QVariant(latitude) : QVariant());
+    query.bindValue(QStringLiteral(":longitude"), hasGpsPosition ? QVariant(longitude) : QVariant());
+    query.bindValue(QStringLiteral(":path"), path);
+    if (!query.exec()) {
+        m_error = query.lastError().text();
+        return false;
+    }
+    m_error.clear();
+    return true;
+}
+
 bool ImageCache::relinkImage(const QString &oldPath, const ImageMetadata &image)
 {
     if (oldPath.isEmpty() || image.path.isEmpty() || image.thumbnailPng.isEmpty() || (!m_initialized && !initialize()))
@@ -1252,6 +1293,30 @@ void ImageCache::handleClient(QLocalSocket *socket, const QByteArray &request)
         QDataStream response(&result, QIODevice::WriteOnly);
         response << error.isEmpty() << error << changed;
         payload = result;
+    } else if (operation == UpdateGpsRequest) {
+        QString path;
+        bool hasGpsPosition = false;
+        double latitude = 0.0;
+        double longitude = 0.0;
+        requestStream >> path >> hasGpsPosition >> latitude >> longitude;
+        bool changed = false;
+        QString error;
+        if (requestStream.status() != QDataStream::Ok || path.isEmpty() ||
+            (hasGpsPosition && (!std::isfinite(latitude) || !std::isfinite(longitude) ||
+                                std::abs(latitude) > 90.0 || std::abs(longitude) > 180.0))) {
+            error = QStringLiteral("The cache action sent an invalid GPS update.");
+        } else {
+            QSqlQuery query(m_databaseHolder->database);
+            query.prepare(QStringLiteral("UPDATE image_cache SET gps_latitude=:latitude, gps_longitude=:longitude WHERE path=:path"));
+            query.bindValue(QStringLiteral(":latitude"), hasGpsPosition ? QVariant(latitude) : QVariant());
+            query.bindValue(QStringLiteral(":longitude"), hasGpsPosition ? QVariant(longitude) : QVariant());
+            query.bindValue(QStringLiteral(":path"), path);
+            if (query.exec())
+                changed = true;
+            else
+                error = query.lastError().text();
+        }
+        payload = encodeAdded(changed, error);
     } else if (operation == UpdateImageDateRequest) {
         QString path;
         QString dateTime;

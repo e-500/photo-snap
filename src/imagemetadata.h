@@ -27,6 +27,8 @@ QString readImageShotDateTime(const QString &path);
 bool writeImageShotDateTime(const QString &path, const QDateTime &dateTime, QString *error = nullptr);
 QString readImageAuthor(const QString &path);
 QString readImageCopyright(const QString &path);
+bool readImageGpsPosition(const QString &path, double *latitude, double *longitude);
 bool writeImageExifMetadata(const QString &path, const QDateTime &dateTime, const QString &author,
                             const QString &copyright, bool updateDateTime, bool updateAuthor,
-                            bool updateCopyright, QString *error = nullptr);
+                            bool updateCopyright, bool updateGpsPosition, bool hasGpsPosition,
+                            double latitude, double longitude, QString *error = nullptr);

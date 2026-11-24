@@ -73,6 +73,7 @@ public:
     bool addImageIfNew(const ImageMetadata &image);
     QString cachedImagePathByHash(const QByteArray &hash);
     bool updateImageHash(const QString &path, const QByteArray &hash);
+    bool updateImageGpsPosition(const QString &path, bool hasGpsPosition, double latitude, double longitude);
     bool relinkImage(const QString &oldPath, const ImageMetadata &image);
     bool hideImage(const QString &path);
     bool unhideImage(const QString &path);

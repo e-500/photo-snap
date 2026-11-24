@@ -32,6 +32,7 @@
 #include <QDir>
 #include <QDateTime>
 #include <QDateTimeEdit>
+#include <QDoubleSpinBox>
 #include <QDesktopServices>
 #include <QDialog>
 #include <QDialogButtonBox>
@@ -568,7 +569,7 @@ void MainWindow::editExif()
         return;
     if (targetPaths.size() > 1 &&
         QMessageBox::question(this, tr("Edit selected photo metadata?"),
-                              tr("Apply the same shooting date, author, and copyright to all %n selected photos?",
+                              tr("Apply the same shooting date, GPS location, author, and copyright to all %n selected photos?",
                                  nullptr, targetPaths.size()),
                               QMessageBox::Yes | QMessageBox::No, QMessageBox::No) != QMessageBox::Yes)
         return;
@@ -577,6 +578,9 @@ void MainWindow::editExif()
     QDateTime initialDateTime = QDateTime::fromString(readImageShotDateTime(initialPath), Qt::ISODate);
     if (!initialDateTime.isValid())
         initialDateTime = QFileInfo(initialPath).lastModified();
+    double initialLatitude = 0.0;
+    double initialLongitude = 0.0;
+    const bool hasInitialGpsPosition = readImageGpsPosition(initialPath, &initialLatitude, &initialLongitude);
 
     QDialog dialog(this);
     dialog.setWindowTitle(tr("Edit metadata"));
@@ -585,14 +589,14 @@ void MainWindow::editExif()
     auto *shotDateTime = new QDateTimeEdit(initialDateTime, &dialog);
     shotDateTime->setDisplayFormat(QStringLiteral("yyyy-MM-dd HH:mm:ss"));
     shotDateTime->setCalendarPopup(true);
-    const auto addUpdateField = [&dialog, form](const QString &label, QWidget *field) {
+    const auto addUpdateField = [&dialog, form](const QString &label, QWidget *field, bool checked = true) {
         auto *row = new QWidget(&dialog);
         auto *rowLayout = new QHBoxLayout(row);
         rowLayout->setContentsMargins(0, 0, 0, 0);
         auto *enabled = new QCheckBox(tr("Update"), row);
-        enabled->setChecked(true);
+        enabled->setChecked(checked);
         enabled->setToolTip(tr("When unchecked, keep each photo's existing value."));
-        field->setEnabled(true);
+        field->setEnabled(checked);
         rowLayout->addWidget(enabled);
         rowLayout->addWidget(field, 1);
         QObject::connect(enabled, &QCheckBox::toggled, field, &QWidget::setEnabled);
@@ -600,6 +604,36 @@ void MainWindow::editExif()
         return enabled;
     };
     auto *updateDateTime = addUpdateField(tr("Shot date/time"), shotDateTime);
+
+    auto *latitude = new QDoubleSpinBox(&dialog);
+    latitude->setRange(-90.0, 90.0);
+    latitude->setDecimals(7);
+    latitude->setSingleStep(0.0001);
+    latitude->setValue(initialLatitude);
+    auto *longitude = new QDoubleSpinBox(&dialog);
+    longitude->setRange(-180.0, 180.0);
+    longitude->setDecimals(7);
+    longitude->setSingleStep(0.0001);
+    longitude->setValue(initialLongitude);
+    auto *removeGps = new QCheckBox(tr("Remove GPS location"), &dialog);
+    auto *gpsEditor = new QWidget(&dialog);
+    auto *gpsLayout = new QHBoxLayout(gpsEditor);
+    gpsLayout->setContentsMargins(0, 0, 0, 0);
+    gpsLayout->addWidget(new QLabel(tr("Latitude"), gpsEditor));
+    gpsLayout->addWidget(latitude, 1);
+    gpsLayout->addWidget(new QLabel(tr("Longitude"), gpsEditor));
+    gpsLayout->addWidget(longitude, 1);
+    gpsLayout->addWidget(removeGps);
+    auto *updateGps = addUpdateField(tr("GPS location"), gpsEditor, hasInitialGpsPosition);
+    connect(removeGps, &QCheckBox::toggled, &dialog, [latitude, longitude](bool remove) {
+        latitude->setEnabled(!remove);
+        longitude->setEnabled(!remove);
+    });
+    connect(updateGps, &QCheckBox::toggled, &dialog, [latitude, longitude, removeGps](bool enabled) {
+        removeGps->setEnabled(enabled);
+        latitude->setEnabled(enabled && !removeGps->isChecked());
+        longitude->setEnabled(enabled && !removeGps->isChecked());
+    });
 
     QSettings settings;
     auto makeSuggestionCombo = [&dialog](QStringList suggestions, const QString &currentValue) {
@@ -627,13 +661,14 @@ void MainWindow::editExif()
     layout->addLayout(form);
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Save | QDialogButtonBox::Cancel, &dialog);
     QPushButton *saveButton = buttons->button(QDialogButtonBox::Save);
-    const auto updateSaveEnabled = [updateDateTime, updateAuthor, updateCopyright, saveButton]() {
+    const auto updateSaveEnabled = [updateDateTime, updateAuthor, updateCopyright, updateGps, saveButton]() {
         saveButton->setEnabled(updateDateTime->isChecked() || updateAuthor->isChecked() ||
-                                updateCopyright->isChecked());
+                                updateCopyright->isChecked() || updateGps->isChecked());
     };
     connect(updateDateTime, &QCheckBox::toggled, &dialog, updateSaveEnabled);
     connect(updateAuthor, &QCheckBox::toggled, &dialog, updateSaveEnabled);
     connect(updateCopyright, &QCheckBox::toggled, &dialog, updateSaveEnabled);
+    connect(updateGps, &QCheckBox::toggled, &dialog, updateSaveEnabled);
     updateSaveEnabled();
     connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
@@ -643,6 +678,8 @@ void MainWindow::editExif()
 
     const QString shootingDateTime = updateDateTime->isChecked()
         ? shotDateTime->dateTime().toString(Qt::ISODate) : QString();
+    const bool gpsPositionEnabled = updateGps->isChecked();
+    const bool hasGpsPosition = gpsPositionEnabled && !removeGps->isChecked();
     QString error;
     const QString authorValue = author->currentText().trimmed();
     const QString copyrightValue = copyright->currentText().trimmed();
@@ -669,7 +706,8 @@ void MainWindow::editExif()
         error.clear();
         if (!writeImageExifMetadata(path, shotDateTime->dateTime(), authorValue, copyrightValue,
                                     updateDateTime->isChecked(), updateAuthor->isChecked(),
-                                    updateCopyright->isChecked(), &error)) {
+                                    updateCopyright->isChecked(), gpsPositionEnabled, hasGpsPosition,
+                                    latitude->value(), longitude->value(), &error)) {
             failures.append(tr("%1: %2").arg(path, error));
             continue;
         }
@@ -695,10 +733,18 @@ void MainWindow::editExif()
         if (!hashRead)
             continue;
         const QString updatedAt = QFileInfo(path).lastModified().toString(Qt::ISODate);
-        if (!cache.updateImageShootingDateTime(path, shootingDateTime, updatedAt) ||
-            !cache.updateImageHash(path, hash.result()))
+        const bool dateUpdated = cache.updateImageShootingDateTime(path, shootingDateTime, updatedAt);
+        QString cacheError = dateUpdated ? QString() : cache.errorString();
+        const bool gpsUpdated = !gpsPositionEnabled ||
+            cache.updateImageGpsPosition(path, hasGpsPosition, latitude->value(), longitude->value());
+        if (!gpsUpdated && cacheError.isEmpty())
+            cacheError = cache.errorString();
+        const bool hashUpdated = cache.updateImageHash(path, hash.result());
+        if (!hashUpdated && cacheError.isEmpty())
+            cacheError = cache.errorString();
+        if (!dateUpdated || !gpsUpdated || !hashUpdated)
             failures.append(tr("%1: metadata saved, but the library entry could not be updated (%2)")
-                                .arg(path, cache.errorString()));
+                                .arg(path, cacheError));
     }
     if (!failures.isEmpty())
         QMessageBox::warning(this, saved == targetPaths.size() ? tr("Some library entries could not be updated")
