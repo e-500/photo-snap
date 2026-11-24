@@ -1,0 +1,61 @@
+name: Build Linux
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build qt6-base-dev libgl1-mesa-dev dpkg-dev
+
+      - name: Build and deploy
+        run: bash tools/02-make-executable/linux.sh
+
+      - name: Create unsigned Debian package
+        run: |
+          set -euo pipefail
+          package_dir="$(mktemp -d)"
+          mkdir -p "$package_dir/DEBIAN" \
+            "$package_dir/usr/bin" \
+            "$package_dir/usr/share/applications" \
+            "$package_dir/usr/share/icons/hicolor/512x512/apps"
+
+          install -m 0755 output/bin/photo-snap "$package_dir/usr/bin/photo-snap"
+          install -m 0755 output/bin/photo-snap-cache-scanner "$package_dir/usr/bin/photo-snap-cache-scanner"
+          cp -a output/bin/* "$package_dir/usr/bin/"
+          install -m 0644 resources/photo-snap.desktop "$package_dir/usr/share/applications/photo-snap.desktop"
+          install -m 0644 resources/photosnap.png "$package_dir/usr/share/icons/hicolor/512x512/apps/photosnap.png"
+
+          cat > "$package_dir/DEBIAN/control" <<'CONTROL'
+          Package: photo-snap
+          Version: 1.0.0
+          Section: graphics
+          Priority: optional
+          Architecture: amd64
+          Maintainer: Photo Snap Developers
+          Description: Organize and browse a local photo archive
+           Photo Snap is a cross-platform desktop application for managing a domestic photo archive.
+          CONTROL
+
+          dpkg-deb --build --root-owner-group "$package_dir" output/photo-snap_1.0.0_amd64.deb
+
+      - name: Upload Linux artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: photo-snap-linux
+          path: output/photo-snap_1.0.0_amd64.deb
+          if-no-files-found: error

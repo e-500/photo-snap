@@ -1,0 +1,42 @@
+name: Build macOS
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Qt
+        run: |
+          brew install qt@6
+          echo "CMAKE_PREFIX_PATH=$(brew --prefix qt@6)" >> "$GITHUB_ENV"
+
+      - name: Build and deploy
+        run: bash tools/02-make-executable/macos.sh
+
+      - name: Create unsigned disk image
+        run: |
+          hdiutil create \
+            -volname "Photo Snap" \
+            -srcfolder output/photo-snap.app \
+            -ov \
+            -format UDZO \
+            output/Photo-Snap.dmg
+
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: photo-snap-macos
+          path: output/Photo-Snap.dmg
+          if-no-files-found: error
