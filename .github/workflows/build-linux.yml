@@ -20,7 +20,7 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake ninja-build qt6-base-dev libgl1-mesa-dev dpkg-dev
+          sudo apt-get install -y cmake ninja-build qt6-base-dev libgl1-mesa-dev dpkg-dev patchelf
 
       - name: Build and deploy
         run: bash tools/02-make-executable/linux.sh
