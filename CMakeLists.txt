@@ -80,7 +80,7 @@ endif()
 if(QT_VERSION_MAJOR EQUAL 6 AND COMMAND qt_generate_deploy_app_script)
     set(PHOTOSNAP_QT_DEPLOY_OPTIONS)
     if(UNIX AND NOT APPLE AND Qt6Core_VERSION VERSION_GREATER_EQUAL "6.10")
-        list(APPEND PHOTOSNAP_QT_DEPLOY_OPTIONS EXCLUDE_PLUGIN_TYPES egldeviceintegrations)
+        list(APPEND PHOTOSNAP_QT_DEPLOY_OPTIONS EXCLUDE_PLUGIN_TYPES egldeviceintegrations generic)
     endif()
 
     qt_generate_deploy_app_script(
