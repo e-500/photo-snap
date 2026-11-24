@@ -318,11 +318,7 @@ void CacheBrowserWindow::startScan()
     const QString scannerName = QStringLiteral("photo-snap-cache-scanner");
 #endif
     QDir applicationDirectory(QCoreApplication::applicationDirPath());
-#if defined(Q_OS_MACOS) || defined(Q_OS_MAC)
-    const QString scannerPath = applicationDirectory.absoluteFilePath(QStringLiteral("../../../bin/%1").arg(scannerName));
-#else
     const QString scannerPath = applicationDirectory.filePath(scannerName);
-#endif
     if (!QFileInfo::exists(scannerPath)) {
         QMessageBox::warning(this, tr("Scanner not found"),
                              tr("Could not find the scanner application:\n%1").arg(scannerPath));

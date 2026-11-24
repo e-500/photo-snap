@@ -30,9 +30,18 @@ if(QT_VERSION_MAJOR EQUAL 6 AND TARGET Qt6::QSQLiteDriverPlugin)
     qt_import_plugins(photo-snap-cache-scanner INCLUDE Qt6::QSQLiteDriverPlugin)
 endif()
 
-install(TARGETS photo-snap-cache-scanner RUNTIME DESTINATION bin)
+if(APPLE)
+    set_target_properties(photo-snap-cache-scanner PROPERTIES
+        INSTALL_RPATH "@executable_path/../Frameworks"
+    )
+    set(scanner_install_dir "photo-snap.app/Contents/MacOS")
+else()
+    set(scanner_install_dir bin)
+endif()
 
-if(QT_VERSION_MAJOR EQUAL 6 AND COMMAND qt_generate_deploy_app_script)
+install(TARGETS photo-snap-cache-scanner RUNTIME DESTINATION "${scanner_install_dir}")
+
+if(QT_VERSION_MAJOR EQUAL 6 AND COMMAND qt_generate_deploy_app_script AND NOT APPLE)
     qt_generate_deploy_app_script(
         TARGET photo-snap-cache-scanner
         OUTPUT_SCRIPT photo_snap_scanner_deploy_script
