@@ -37,6 +37,7 @@ fi
 echo 'Configuring Photo Snap for Release...'
 cmake -S "$project_root" -B "$build_dir" \
     -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_OSX_DEPLOYMENT_TARGET=12.0 \
     -DCMAKE_INSTALL_BINDIR=bin \
     "-DCMAKE_RUNTIME_OUTPUT_DIRECTORY=$build_dir/runtime" \
     "-DCMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE=$build_dir/runtime" \
