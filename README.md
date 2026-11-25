@@ -6,6 +6,8 @@
 
 Photo Snap is a completely free, open-source, cross-platform desktop application for Windows, macOS, and GNU/Linux, built for managing a domestic picture archive. Bring photos from many folders into one handy, date-based library while the originals stay in their folders. Browse a fast local thumbnail catalog, find a moment by year and month, and copy the photos you want into an export folder.
 
+<img width="975" height="625" alt="photo-snap-screenshot" src="https://github.com/user-attachments/assets/31f6b58f-a426-48d7-93fb-e8316ce75b4e" />
+
 No subscription. No cloud library. No reshuffling your archive.
 
 Downloads (latest release):
