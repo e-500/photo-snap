@@ -27,7 +27,7 @@ Browse by **year → month**, ordered by either **shooting date** or **file crea
 
 The cache works when you ask Photo Snap to use it. Opening the library reads the catalog, and choosing **Scan folder** checks the selected folder and its subfolders for photos to add or relink. Photo Snap does not continuously watch folders, monitor drives, or scan files in the background. It uses no ongoing file-monitoring work while you are not using these features.
 
-For each photo, the cache records its path, metadata, thumbnail, and a SHA-256 content hash. A scan checks the path first. If a photo is found at a different path, its hash can identify it; Photo Snap asks whether to relink it and apply the detected folder change to other matching entries. This lets you move or reorganize folders and update the library by scanning them, without manually rebuilding the catalog.
+For each photo, the cache records its path, metadata, thumbnail, and a SHA-256 content hash. A scan checks the path first. If a photo with the same hash is found elsewhere and the cached original path no longer exists, Photo Snap asks whether to relink it and apply the detected folder change to other matching entries. If the original still exists, the incoming copy is skipped as a duplicate. This lets you move or reorganize folders and update the library by scanning them, without manually rebuilding the catalog.
 
 ## Made for everyday photo sorting
 

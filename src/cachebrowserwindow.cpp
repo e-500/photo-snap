@@ -37,6 +37,7 @@
 #include <QHBoxLayout>
 #include <QLocale>
 #include <QMessageBox>
+#include <QCheckBox>
 #include <QMouseEvent>
 #include <QPixmap>
 #include <QPlainTextEdit>
@@ -363,20 +364,30 @@ void CacheBrowserWindow::appendScanOutput(const QString &output)
                 m_stopScanButton->setEnabled(false);
                 const QString from = oldPrefix.isEmpty() ? QFileInfo(oldPath).absolutePath() : oldPrefix;
                 const QString to = newPrefix.isEmpty() ? QFileInfo(newPath).absolutePath() : newPrefix;
-                const auto answer = QMessageBox::question(
-                    this, tr("Photo moved"),
+                QMessageBox messageBox(this);
+                messageBox.setWindowTitle(tr("Photo moved"));
+                messageBox.setText(
                     tr("This photo was found at a new path.\n\nFrom: %1\nTo: %2\n\n"
-                       "Relink this photo and use this folder change for other matching entries? Choosing No aborts this scan.")
-                        .arg(from, to),
-                    QMessageBox::Yes | QMessageBox::No, QMessageBox::Yes);
-                m_scannerProcess->write(answer == QMessageBox::Yes ? "relink\n" : "abort\n");
-                if (answer == QMessageBox::Yes) {
+                       "Relink this photo and apply the folder change to other matching entries?")
+                        .arg(from, to));
+                messageBox.setStandardButtons(QMessageBox::Yes | QMessageBox::No);
+                messageBox.setDefaultButton(QMessageBox::Yes);
+                auto *rememberChoice = new QCheckBox(tr("Remember the choice for next similar cases"), &messageBox);
+                messageBox.setCheckBox(rememberChoice);
+                const auto answer = messageBox.exec();
+                const bool remember = rememberChoice->isChecked();
+                if (answer == QMessageBox::Yes)
+                    m_scannerProcess->write(remember ? "relink-remember\n" : "relink\n");
+                else
+                    m_scannerProcess->write(remember ? "skip-remember\n" : "abort\n");
+                if (answer == QMessageBox::Yes || remember) {
                     m_pauseResumeButton->setEnabled(true);
                     m_stopScanButton->setEnabled(true);
                 }
-                m_scanLog->appendPlainText(answer == QMessageBox::Yes
-                    ? tr("Relink approved: %1 → %2").arg(from, to)
-                    : tr("Relink declined; aborting scan."));
+                if (answer == QMessageBox::Yes)
+                    m_scanLog->appendPlainText(tr("Relink approved: %1 → %2").arg(from, to));
+                else if (!remember)
+                    m_scanLog->appendPlainText(tr("Relink declined; aborting scan."));
             }
         } else if (line.startsWith(QStringLiteral("Progress: ")) && line.endsWith(QLatin1Char('%'))) {
             bool valid = false;

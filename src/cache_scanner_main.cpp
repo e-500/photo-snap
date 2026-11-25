@@ -105,18 +105,31 @@ QString replacePrefix(const QString &path, const QString &from, const QString &t
     return QDir::fromNativeSeparators(to) + normalized.mid(normalizedFrom.size());
 }
 
-bool waitForRelinkDecision(QString *stopped, QString *pending, QTextStream &output)
+enum class RelinkDecision { Relink, Skip, Abort };
+
+RelinkDecision waitForRelinkDecision(QString *stopped, QString *pending, QTextStream &output,
+                                     bool *rememberChoice)
 {
     while (true) {
         for (const QString &command : readControlCommands(pending)) {
             if (command == QStringLiteral("relink")) {
                 output << "Relink accepted.\n" << Qt::flush;
-                return true;
+                return RelinkDecision::Relink;
+            }
+            if (command == QStringLiteral("relink-remember")) {
+                *rememberChoice = true;
+                output << "Relink accepted and remembered.\n" << Qt::flush;
+                return RelinkDecision::Relink;
+            }
+            if (command == QStringLiteral("skip-remember")) {
+                *rememberChoice = true;
+                output << "Relink declined and remembered; skipping matching photos.\n" << Qt::flush;
+                return RelinkDecision::Skip;
             }
             if (command == QStringLiteral("abort") || command == QStringLiteral("stop")) {
                 *stopped = QStringLiteral("stop");
                 output << "Relink declined; stopping scan.\n" << Qt::flush;
-                return false;
+                return RelinkDecision::Abort;
             }
         }
         QThread::msleep(100);
@@ -232,6 +245,8 @@ int main(int argc, char *argv[])
         originalPathByKey.insert(pathKey(path), path);
     }
     QVector<QPair<QString, QString>> prefixChanges;
+    bool hasRememberedRelinkChoice = false;
+    bool rememberedRelinkChoice = false;
 
     quint64 scanned = 0;
     quint64 added = 0;
@@ -378,12 +393,39 @@ int main(int argc, char *argv[])
         } else {
             const QString matchingPath = cache.cachedImagePathByHash(hashedMetadata.contentHash);
             if (!matchingPath.isEmpty() && pathKey(matchingPath) != key) {
+                if (QFileInfo::exists(matchingPath)) {
+                    ++skipped;
+                    output << "Skipped (duplicate; original still exists): " << canonicalPath
+                           << " (original: " << matchingPath << ")\n" << Qt::flush;
+                    reportProgress();
+                    continue;
+                }
                 const auto prefixes = inferPrefixes(matchingPath, canonicalPath);
-                output << "MovedMatch:\t" << matchingPath << '\t' << canonicalPath << '\t'
-                       << prefixes.first << '\t' << prefixes.second << '\n' << Qt::flush;
-                if (!waitForRelinkDecision(&stopped, &pendingCommands, output)) {
+                RelinkDecision decision = RelinkDecision::Abort;
+                if (hasRememberedRelinkChoice) {
+                    decision = rememberedRelinkChoice ? RelinkDecision::Relink : RelinkDecision::Skip;
+                    output << (rememberedRelinkChoice ? "Relink choice remembered; accepting: "
+                                                       : "Relink choice remembered; skipping: ")
+                           << canonicalPath << '\n' << Qt::flush;
+                } else {
+                    output << "MovedMatch:\t" << matchingPath << '\t' << canonicalPath << '\t'
+                           << prefixes.first << '\t' << prefixes.second << '\n' << Qt::flush;
+                    bool rememberChoice = false;
+                    decision = waitForRelinkDecision(&stopped, &pendingCommands, output, &rememberChoice);
+                    if (rememberChoice) {
+                        hasRememberedRelinkChoice = true;
+                        rememberedRelinkChoice = decision == RelinkDecision::Relink;
+                    }
+                }
+                if (decision == RelinkDecision::Abort) {
                     reportProgress();
                     break;
+                }
+                if (decision == RelinkDecision::Skip) {
+                    ++skipped;
+                    output << "Skipped moved photo: " << canonicalPath << '\n' << Qt::flush;
+                    reportProgress();
+                    continue;
                 }
                 if (!prefixes.first.isEmpty() && !prefixes.second.isEmpty() && prefixes.first != prefixes.second)
                     prefixChanges.append(prefixes);
