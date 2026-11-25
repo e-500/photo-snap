@@ -60,19 +60,50 @@ if [[ ! -d "$application" ]]; then
     exit 1
 fi
 
-if ! grep -q '^PHOTOSNAP_QT_DEPLOYMENT_API:INTERNAL=ON$' "$build_dir/CMakeCache.txt"; then
-    qt_dir="$(sed -n -E 's/^Qt(6|5)_DIR:PATH=(.*)$/\2/p' "$build_dir/CMakeCache.txt" | head -n 1)"
-    qt_prefix="${qt_dir%/lib/cmake/Qt[56]}"
-    deploy_tool="${qt_prefix}/bin/macdeployqt"
-    if [[ ! -x "$deploy_tool" ]]; then
-        deploy_tool="$(command -v macdeployqt || true)"
+deploy_tool=""
+for qt_prefix in "${CMAKE_PREFIX_PATH:-}" "${QT_ROOT_DIR:-}" "${Qt6_DIR:-}" "${Qt5_DIR:-}"; do
+    if [[ -n "$qt_prefix" ]]; then
+        if [[ "$qt_prefix" == */lib/cmake/Qt[56] ]]; then
+            qt_prefix="${qt_prefix%/lib/cmake/Qt[56]}"
+        fi
+        if [[ -x "$qt_prefix/bin/macdeployqt" ]]; then
+            deploy_tool="$qt_prefix/bin/macdeployqt"
+            break
+        fi
     fi
-    if [[ -z "$deploy_tool" ]]; then
-        echo 'Qt deployment support is unavailable. Use Qt 6.3 or newer, or install macdeployqt for the selected Qt kit.' >&2
+done
+
+if [[ -z "$deploy_tool" ]]; then
+    qt_dir="$(sed -n -E 's/^Qt(6|5)_DIR:PATH=(.*)$/\2/p' "$build_dir/CMakeCache.txt" | head -n 1)"
+    if [[ -n "$qt_dir" ]]; then
+        qt_prefix="${qt_dir%/lib/cmake/Qt[56]}"
+        if [[ -x "$qt_prefix/bin/macdeployqt" ]]; then
+            deploy_tool="$qt_prefix/bin/macdeployqt"
+        fi
+    fi
+fi
+
+if [[ -z "$deploy_tool" ]]; then
+    deploy_tool="$(command -v macdeployqt || true)"
+fi
+
+if [[ -z "$deploy_tool" ]]; then
+    echo 'macdeployqt was not found. Install or select a Qt macOS kit containing macdeployqt.' >&2
+    exit 1
+fi
+
+echo "Deploying Qt frameworks with: $deploy_tool"
+"$deploy_tool" "$application" -always-overwrite -verbose=1
+
+framework_dir="$application/Contents/Frameworks"
+required_frameworks=(QtCore QtGui QtWidgets QtNetwork QtSql)
+for framework in "${required_frameworks[@]}"; do
+    framework_path="$framework_dir/$framework.framework/Versions/A/$framework"
+    if [[ ! -f "$framework_path" ]]; then
+        echo "Qt deployment verification failed: $framework_path is missing." >&2
         exit 1
     fi
-    "$deploy_tool" "$application"
-fi
+done
 
 if command -v codesign >/dev/null 2>&1; then
     echo 'Ad-hoc signing the application bundle...'
