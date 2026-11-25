@@ -49,7 +49,15 @@ jobs:
           while IFS= read -r -d '' library; do
             shlibdeps_args+=(-e "$library")
           done < <(find "$package_dir/usr/bin" -type f -name '*.so*' -print0)
-          shlibdeps_output="$(dpkg-shlibdeps "${shlibdeps_args[@]}")"
+          shlibdeps_dir="$(mktemp -d)"
+          mkdir -p "$shlibdeps_dir/debian"
+          cat > "$shlibdeps_dir/debian/control" <<CONTROL
+          Source: photo-snap
+          Package: photo-snap
+          Architecture: amd64
+          Description: Photo Snap
+          CONTROL
+          shlibdeps_output="$(cd "$shlibdeps_dir" && dpkg-shlibdeps "${shlibdeps_args[@]}")"
           runtime_dependencies="${shlibdeps_output#shlibs:Depends=}"
           if [[ "$runtime_dependencies" == "$shlibdeps_output" || -z "$runtime_dependencies" ]]; then
             echo "dpkg-shlibdeps did not produce runtime dependencies" >&2
