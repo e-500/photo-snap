@@ -28,7 +28,6 @@ Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription
 [Files]
 Source: "..\output\bin\*"; DestDir: "{app}\bin"; Flags: ignoreversion recursesubdirs
 Source: "..\output\plugins\*"; DestDir: "{app}\plugins"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "..\output\translations\*"; DestDir: "{app}\translations"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "..\resources\photosnap.ico"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
