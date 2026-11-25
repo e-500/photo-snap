@@ -11,7 +11,7 @@ AppVersion={#AppVersion}
 AppPublisher={#AppPublisher}
 DefaultDirName={autopf}\{#AppName}
 DefaultGroupName={#AppName}
-UninstallDisplayIcon={app}\photo-snap.exe
+UninstallDisplayIcon={app}\bin\photo-snap.exe
 OutputDir=..\output
 OutputBaseFilename=Photo-Snap-Setup
 SetupIconFile=..\resources\photosnap.ico
@@ -26,9 +26,11 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription: "Additional icons:"
 
 [Files]
-Source: "..\output\bin\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs
+Source: "..\output\bin\*"; DestDir: "{app}\bin"; Flags: ignoreversion recursesubdirs
+Source: "..\output\plugins\*"; DestDir: "{app}\plugins"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\output\translations\*"; DestDir: "{app}\translations"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "..\resources\photosnap.ico"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
-Name: "{autoprograms}\{#AppName}"; Filename: "{app}\photo-snap.exe"; IconFilename: "{app}\photosnap.ico"
-Name: "{autodesktop}\{#AppName}"; Filename: "{app}\photo-snap.exe"; IconFilename: "{app}\photosnap.ico"; Tasks: desktopicon
+Name: "{autoprograms}\{#AppName}"; Filename: "{app}\bin\photo-snap.exe"; IconFilename: "{app}\photosnap.ico"
+Name: "{autodesktop}\{#AppName}"; Filename: "{app}\bin\photo-snap.exe"; IconFilename: "{app}\photosnap.ico"; Tasks: desktopicon
