@@ -28,6 +28,10 @@
 int main(int argc, char *argv[])
 {
     QApplication app(argc, argv);
+#ifdef Q_OS_WIN
+    // Keep the Windows UI consistent between local builds and packaged releases.
+    app.setStyle(QStringLiteral("Fusion"));
+#endif
     QCoreApplication::setApplicationName(QStringLiteral("Photo Snap"));
     QCoreApplication::setApplicationVersion(QStringLiteral("1.0.0"));
     QCoreApplication::setOrganizationName(QStringLiteral("Photo Snap"));

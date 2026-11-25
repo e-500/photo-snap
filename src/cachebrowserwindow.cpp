@@ -85,6 +85,17 @@ QIcon disclosureIcon(bool expanded)
     return QIcon(pixmap);
 }
 
+QString checkboxStyleSheet()
+{
+    return QStringLiteral(
+        "QCheckBox { spacing: 4px; }"
+        "QCheckBox::indicator { width: 16px; height: 16px; border: 1px solid #8a919c;"
+        " border-radius: 3px; background: #202329; }"
+        "QCheckBox::indicator:hover { border-color: #55aaff; }"
+        "QCheckBox::indicator:checked { border-color: #55aaff; background: #55aaff; }"
+        "QCheckBox::indicator:indeterminate { border-color: #55aaff; background: #707a88; }");
+}
+
 class OverlayScrollArea final : public QScrollArea
 {
 public:
@@ -472,6 +483,7 @@ void CacheBrowserWindow::refresh()
         pane->selection = new QCheckBox(pane->header);
         pane->selection->setTristate(true);
         pane->selection->setToolTip(tr("Select every photo in this year"));
+        pane->selection->setStyleSheet(checkboxStyleSheet());
         pane->toggle = new QToolButton(pane->header);
         pane->toggle->setCheckable(true);
         pane->toggle->setAutoRaise(true);
@@ -676,6 +688,7 @@ void CacheBrowserWindow::setYearExpanded(YearPane *pane, bool expanded)
             monthHeaderLayout->setSpacing(4);
             monthPane->selection = new QCheckBox(monthPane->header);
             monthPane->selection->setToolTip(tr("Select every photo in this month"));
+            monthPane->selection->setStyleSheet(checkboxStyleSheet());
             monthPane->toggle = new QToolButton(monthPane->header);
             monthPane->toggle->setCheckable(true);
             monthPane->toggle->setAutoRaise(true);

@@ -74,4 +74,12 @@ if ! grep -q '^PHOTOSNAP_QT_DEPLOYMENT_API:INTERNAL=ON$' "$build_dir/CMakeCache.
     "$deploy_tool" "$application"
 fi
 
+if command -v codesign >/dev/null 2>&1; then
+    echo 'Ad-hoc signing the application bundle...'
+    codesign --force --deep --sign - "$application"
+    codesign --verify --deep --strict --verbose=2 "$application"
+else
+    echo 'Warning: codesign was not found; the application bundle will remain unsigned.' >&2
+fi
+
 echo "Deployable application bundle created: $application"
