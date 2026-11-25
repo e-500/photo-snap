@@ -27,6 +27,7 @@
 #include <QCursor>
 #include <QCoreApplication>
 #include <QCheckBox>
+#include <QColor>
 #include <QDialog>
 #include <QDir>
 #include <QFileDialog>
@@ -39,8 +40,11 @@
 #include <QMessageBox>
 #include <QCheckBox>
 #include <QMouseEvent>
+#include <QIcon>
+#include <QPainter>
 #include <QPixmap>
 #include <QPlainTextEdit>
+#include <QPolygonF>
 #include <QPushButton>
 #include <QProcess>
 #include <QResizeEvent>
@@ -64,6 +68,23 @@
 #include <utility>
 
 namespace {
+QIcon disclosureIcon(bool expanded)
+{
+    QPixmap pixmap(10, 10);
+    pixmap.fill(Qt::transparent);
+
+    QPainter painter(&pixmap);
+    painter.setRenderHint(QPainter::Antialiasing);
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(QColor(230, 232, 236));
+    if (expanded) {
+        painter.drawPolygon(QPolygonF{QPointF(1, 3), QPointF(9, 3), QPointF(5, 8)});
+    } else {
+        painter.drawPolygon(QPolygonF{QPointF(2, 1), QPointF(8, 5), QPointF(2, 9)});
+    }
+    return QIcon(pixmap);
+}
+
 class OverlayScrollArea final : public QScrollArea
 {
 public:
@@ -456,7 +477,8 @@ void CacheBrowserWindow::refresh()
         pane->toggle->setAutoRaise(true);
         pane->toggle->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
         pane->toggle->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-        pane->toggle->setArrowType(Qt::RightArrow);
+        pane->toggle->setIcon(disclosureIcon(false));
+        pane->toggle->setIconSize(QSize(10, 10));
         pane->toggle->setText(year == QStringLiteral("Undated") ? tr("Undated") : year);
         pane->toggle->setStyleSheet(QStringLiteral(
             "QToolButton { text-align: left; font-weight: 600; padding: 2px 4px; background: #282c33; border-radius: 3px; }"
@@ -633,7 +655,7 @@ void CacheBrowserWindow::setYearExpanded(YearPane *pane, bool expanded)
     if (!pane)
         return;
     pane->expanded = expanded;
-    pane->toggle->setArrowType(expanded ? Qt::DownArrow : Qt::RightArrow);
+    pane->toggle->setIcon(disclosureIcon(expanded));
     pane->content->setVisible(expanded);
     if (expanded && pane->months.isEmpty()) {
         const QStringList months = m_cache ? m_cache->cachedImageMonthsOrdered(pane->year, m_dateMode) : QStringList();
@@ -659,7 +681,8 @@ void CacheBrowserWindow::setYearExpanded(YearPane *pane, bool expanded)
             monthPane->toggle->setAutoRaise(true);
             monthPane->toggle->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
             monthPane->toggle->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-            monthPane->toggle->setArrowType(Qt::RightArrow);
+            monthPane->toggle->setIcon(disclosureIcon(false));
+            monthPane->toggle->setIconSize(QSize(10, 10));
             const int monthNumber = month.toInt();
             QString monthName = QLocale().monthName(monthNumber, QLocale::LongFormat);
             if (!monthName.isEmpty())
@@ -711,7 +734,7 @@ void CacheBrowserWindow::setMonthExpanded(MonthPane *pane, bool expanded)
     if (!pane)
         return;
     pane->expanded = expanded;
-    pane->toggle->setArrowType(expanded ? Qt::DownArrow : Qt::RightArrow);
+    pane->toggle->setIcon(disclosureIcon(expanded));
     pane->content->setVisible(expanded);
     if (expanded && !pane->library) {
         pane->library = new ImageLibraryWidget(m_cache, &m_selectedImages, pane->year, pane->month, m_dateMode,
