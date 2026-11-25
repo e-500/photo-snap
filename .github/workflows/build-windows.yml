@@ -18,7 +18,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.13"
+          python-version: "3.13.9"
 
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
@@ -27,6 +27,7 @@ jobs:
           arch: "win64_msvc2022_64"
           archives: qtbase qtsvg
           cache: true
+          setup-python: false
 
       - name: Install Inno Setup
         run: choco install innosetup --no-progress

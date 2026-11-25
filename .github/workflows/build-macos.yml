@@ -18,7 +18,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.13"
+          python-version: "3.13.9"
 
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
@@ -27,6 +27,7 @@ jobs:
           arch: "clang_64"
           archives: qtbase qtsvg
           cache: true
+          setup-python: false
 
       - name: Build and deploy
         run: bash tools/02-make-executable/macos.sh
