@@ -11,13 +11,24 @@ if ! command -v cmake >/dev/null 2>&1; then
     exit 1
 fi
 
-qt_cmake_args=()
+cmake_args=(
+    -S "$project_root"
+    -B "$build_dir"
+    -DCMAKE_BUILD_TYPE=Release
+    -DCMAKE_OSX_DEPLOYMENT_TARGET=12.0
+    -DCMAKE_INSTALL_BINDIR=bin
+    "-DCMAKE_RUNTIME_OUTPUT_DIRECTORY=$build_dir/runtime"
+    "-DCMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE=$build_dir/runtime"
+)
+
 if [[ -n "${CMAKE_PREFIX_PATH:-}" ]]; then
-    qt_cmake_args+=("-DCMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH")
+    cmake_args+=("-DCMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH")
+elif [[ -n "${QT_ROOT_DIR:-}" ]]; then
+    cmake_args+=("-DCMAKE_PREFIX_PATH=$QT_ROOT_DIR")
 elif [[ -n "${Qt6_DIR:-}" ]]; then
-    qt_cmake_args+=("-DQt6_DIR=$Qt6_DIR")
+    cmake_args+=("-DQt6_DIR=$Qt6_DIR")
 elif [[ -n "${Qt5_DIR:-}" ]]; then
-    qt_cmake_args+=("-DQt5_DIR=$Qt5_DIR")
+    cmake_args+=("-DQt5_DIR=$Qt5_DIR")
 else
     for qt_major in 6 5; do
         for qt_root in "${HOME:-}/Qt" /opt/Qt; do
@@ -25,7 +36,7 @@ else
                 qt_config="$(find "$qt_root" -type f -path "*/lib/cmake/Qt${qt_major}/Qt${qt_major}Config.cmake" -print -quit 2>/dev/null || true)"
                 if [[ -n "$qt_config" ]]; then
                     qt_prefix="${qt_config%/lib/cmake/Qt${qt_major}/Qt${qt_major}Config.cmake}"
-                    qt_cmake_args+=("-DCMAKE_PREFIX_PATH=$qt_prefix")
+                    cmake_args+=("-DCMAKE_PREFIX_PATH=$qt_prefix")
                     echo "Using Qt from: $qt_prefix"
                     break 2
                 fi
@@ -35,13 +46,7 @@ else
 fi
 
 echo 'Configuring Photo Snap for Release...'
-cmake -S "$project_root" -B "$build_dir" \
-    -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_OSX_DEPLOYMENT_TARGET=12.0 \
-    -DCMAKE_INSTALL_BINDIR=bin \
-    "-DCMAKE_RUNTIME_OUTPUT_DIRECTORY=$build_dir/runtime" \
-    "-DCMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE=$build_dir/runtime" \
-    "${qt_cmake_args[@]}"
+cmake "${cmake_args[@]}"
 
 echo 'Building Photo Snap...'
 cmake --build "$build_dir" --config Release --parallel
