@@ -23,6 +23,8 @@
 #include "imagemetadata.h"
 #include "language.h"
 #include "core/PreviewRenderer.h"
+#include "core/ImageTransform.h"
+#include "ui/CropOverlay.h"
 
 #include <QAction>
 #include <QApplication>
@@ -141,6 +143,8 @@ MainWindow::MainWindow(QWidget *parent)
     setMinimumSize(520, 360);
     auto *centralWidget = new QWidget(this);
     m_view = new PhotoView(centralWidget);
+    m_cropOverlay = new CropOverlay(m_view->viewport());
+    m_cropOverlay->hide();
     setCentralWidget(centralWidget);
 
     createActions();
@@ -179,6 +183,67 @@ MainWindow::MainWindow(QWidget *parent)
     rotateButton->setDefaultAction(m_rotateAction);
     rotateButton->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     imageTitleLayout->addWidget(rotateButton);
+    auto *rotateLeftButton = new QToolButton(imageTitleBar);
+    rotateLeftButton->setAutoRaise(true);
+    rotateLeftButton->setDefaultAction(m_rotateLeftAction);
+    imageTitleLayout->addWidget(rotateLeftButton);
+    auto *resetRotationButton = new QToolButton(imageTitleBar);
+    resetRotationButton->setAutoRaise(true);
+    resetRotationButton->setDefaultAction(m_resetRotationAction);
+    imageTitleLayout->addWidget(resetRotationButton);
+    m_rotationSpin = new QDoubleSpinBox(imageTitleBar);
+    m_rotationSpin->setRange(-180.0, 180.0);
+    m_rotationSpin->setDecimals(1);
+    m_rotationSpin->setSingleStep(0.1);
+    m_rotationSpin->setSuffix(QStringLiteral(" °"));
+    m_rotationSpin->setToolTip(tr("Free rotation"));
+    imageTitleLayout->addWidget(m_rotationSpin);
+    connect(m_rotationSpin, qOverload<double>(&QDoubleSpinBox::valueChanged),
+            this, &MainWindow::setFreeRotation);
+    auto *cropButton = new QToolButton(imageTitleBar);
+    cropButton->setAutoRaise(true);
+    cropButton->setDefaultAction(m_cropAction);
+    imageTitleLayout->addWidget(cropButton);
+    m_cropRatio = new QComboBox(imageTitleBar);
+    m_cropRatio->addItem(tr("Free"), 0.0);
+    m_cropRatio->addItem(tr("Original"), -1.0);
+    m_cropRatio->addItem(QStringLiteral("1:1"), 1.0);
+    m_cropRatio->addItem(QStringLiteral("4:3"), 4.0 / 3.0);
+    m_cropRatio->addItem(QStringLiteral("3:2"), 3.0 / 2.0);
+    m_cropRatio->addItem(QStringLiteral("16:9"), 16.0 / 9.0);
+    m_cropRatio->setVisible(false);
+    imageTitleLayout->addWidget(m_cropRatio);
+    connect(m_cropRatio, qOverload<int>(&QComboBox::currentIndexChanged),
+            this, [this](int index) {
+        double ratio = m_cropRatio->itemData(index).toDouble();
+        if (ratio < 0.0) {
+            const QImage preview = ImageTransform::rotate(
+                m_document.originalImage(), m_document.adjustments().rotation);
+            ratio = preview.isNull()
+                ? 0.0
+                : qreal(preview.width()) / preview.height();
+        }
+        m_cropOverlay->setAspectRatio(ratio);
+    });
+    m_applyCropButton = new QToolButton(imageTitleBar);
+    m_applyCropButton->setAutoRaise(true);
+    m_applyCropButton->setDefaultAction(m_confirmCropAction);
+    m_applyCropButton->setVisible(false);
+    imageTitleLayout->addWidget(m_applyCropButton);
+    m_cancelCropButton = new QToolButton(imageTitleBar);
+    m_cancelCropButton->setAutoRaise(true);
+    m_cancelCropButton->setDefaultAction(m_cancelCropAction);
+    m_cancelCropButton->setVisible(false);
+    imageTitleLayout->addWidget(m_cancelCropButton);
+    connect(m_cropOverlay, &CropOverlay::confirmed, this, &MainWindow::confirmCrop);
+    connect(m_cropOverlay, &CropOverlay::cancelled, this, &MainWindow::cancelCrop);
+    connect(m_cropOverlay, &CropOverlay::cropChanged, this, [this](const QRectF &rect) {
+        m_document.setCropRect(rect);
+        PreviewRenderer renderer;
+        m_originalPixmap = QPixmap::fromImage(renderer.render(
+            m_document.originalImage(), m_document.adjustments()));
+        m_view->setPhoto(m_originalPixmap);
+    });
     imageTitleLayout->addWidget(copyButton);
     imageTitleLayout->addWidget(m_editExifButton);
     imageTitleLayout->addStretch(1);
@@ -307,6 +372,21 @@ void MainWindow::createActions()
     m_rotateAction = new QAction(style->standardIcon(QStyle::SP_BrowserReload), tr("Rotate"), this);
     m_rotateAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_R));
     connect(m_rotateAction, &QAction::triggered, this, &MainWindow::rotateImage);
+
+    m_rotateLeftAction = new QAction(tr("Rotate left"), this);
+    connect(m_rotateLeftAction, &QAction::triggered, this, &MainWindow::rotateCounterClockwise);
+
+    m_resetRotationAction = new QAction(tr("Reset rotation"), this);
+    connect(m_resetRotationAction, &QAction::triggered, this, &MainWindow::resetRotation);
+
+    m_cropAction = new QAction(tr("Crop"), this);
+    connect(m_cropAction, &QAction::triggered, this, &MainWindow::toggleCrop);
+
+    m_confirmCropAction = new QAction(tr("Apply crop"), this);
+    connect(m_confirmCropAction, &QAction::triggered, this, &MainWindow::confirmCrop);
+
+    m_cancelCropAction = new QAction(tr("Cancel crop"), this);
+    connect(m_cancelCropAction, &QAction::triggered, this, &MainWindow::cancelCrop);
 
     m_copyAction = new QAction(copyIcon(), tr("Copy"), this);
     m_copyAction->setShortcut(QKeySequence::Copy);
@@ -451,6 +531,10 @@ void MainWindow::openImage(const QString &path)
     m_originalPixmap = QPixmap::fromImage(image);
     m_document.setImage(image, m_currentPath);
     m_rotation = 0;
+    if (m_rotationSpin)
+        m_rotationSpin->setValue(0.0);
+    if (m_cropOverlay)
+        m_cropOverlay->hide();
     PreviewRenderer renderer;
     m_originalPixmap = QPixmap::fromImage(renderer.render(
         m_document.originalImage(), m_document.adjustments()));
@@ -521,12 +605,94 @@ void MainWindow::rotateImage()
 {
     if (m_document.originalImage().isNull())
         return;
-    m_rotation = (m_rotation + 90) % 360;
+    m_rotation = ImageTransform::addQuarterTurn(m_rotation);
+    if (m_rotationSpin)
+        m_rotationSpin->setValue(m_rotation);
     m_document.setRotation(m_rotation);
     PreviewRenderer renderer;
     m_originalPixmap = QPixmap::fromImage(renderer.render(
         m_document.originalImage(), m_document.adjustments()));
     m_view->setPhoto(m_originalPixmap);
+}
+
+void MainWindow::rotateCounterClockwise()
+{
+    if (m_document.originalImage().isNull())
+        return;
+    m_rotation = ImageTransform::normalizeRotation(m_rotation - 90.0);
+    if (m_rotationSpin)
+        m_rotationSpin->setValue(m_rotation);
+    m_document.setRotation(m_rotation);
+    PreviewRenderer renderer;
+    m_originalPixmap = QPixmap::fromImage(renderer.render(
+        m_document.originalImage(), m_document.adjustments()));
+    m_view->setPhoto(m_originalPixmap);
+}
+
+void MainWindow::resetRotation()
+{
+    m_rotation = 0.0;
+    if (m_rotationSpin)
+        m_rotationSpin->setValue(0.0);
+    m_document.setRotation(0.0);
+    PreviewRenderer renderer;
+    m_originalPixmap = QPixmap::fromImage(renderer.render(
+        m_document.originalImage(), m_document.adjustments()));
+    m_view->setPhoto(m_originalPixmap);
+}
+
+void MainWindow::setFreeRotation(double degrees)
+{
+    if (m_document.originalImage().isNull())
+        return;
+    m_rotation = ImageTransform::normalizeRotation(degrees);
+    m_document.setRotation(m_rotation);
+    PreviewRenderer renderer;
+    m_originalPixmap = QPixmap::fromImage(renderer.render(
+        m_document.originalImage(), m_document.adjustments()));
+    m_view->setPhoto(m_originalPixmap);
+}
+
+void MainWindow::toggleCrop()
+{
+    if (m_document.originalImage().isNull())
+        return;
+    if (m_cropOverlay->isVisible()) {
+        cancelCrop();
+        return;
+    }
+    m_cropOverlay->setGeometry(m_view->viewport()->rect());
+    m_cropOverlay->resetSelection();
+    m_cropOverlay->show();
+    m_cropOverlay->raise();
+    m_applyCropButton->setVisible(true);
+    m_cancelCropButton->setVisible(true);
+    m_cropRatio->setVisible(true);
+}
+
+void MainWindow::confirmCrop()
+{
+    if (!m_cropOverlay->isVisible())
+        return;
+    m_cropOverlay->hide();
+    m_applyCropButton->setVisible(false);
+    m_cancelCropButton->setVisible(false);
+    m_cropRatio->setVisible(false);
+}
+
+void MainWindow::cancelCrop()
+{
+    if (m_cropOverlay->isVisible()) {
+        m_document.setCropRect(QRectF(0.0, 0.0, 1.0, 1.0));
+        PreviewRenderer renderer;
+        m_originalPixmap = QPixmap::fromImage(renderer.render(
+            m_document.originalImage(), m_document.adjustments()));
+        m_view->setPhoto(m_originalPixmap);
+    }
+    m_cropOverlay->hide();
+    m_applyCropButton->setVisible(false);
+    m_cancelCropButton->setVisible(false);
+    m_cropRatio->setVisible(false);
 }
 
 void MainWindow::copyImageToClipboard()

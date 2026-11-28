@@ -17,6 +17,8 @@ add_executable(photo-snap-phase1-tests
     ../src/core/ImageDocument.h
     ../src/core/PreviewRenderer.cpp
     ../src/core/PreviewRenderer.h
+    ../src/core/ImageTransform.cpp
+    ../src/core/ImageTransform.h
 )
 
 target_include_directories(photo-snap-phase1-tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
@@ -29,3 +31,19 @@ target_link_libraries(photo-snap-phase1-tests
 )
 
 add_test(NAME photo-snap-phase1-document COMMAND photo-snap-phase1-tests)
+
+add_executable(photo-snap-phase2-tests
+    phase2_transform_test.cpp
+    ../src/core/ImageTransform.cpp
+    ../src/core/ImageTransform.h
+)
+
+target_include_directories(photo-snap-phase2-tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(photo-snap-phase2-tests
+    PRIVATE
+        Qt${QT_VERSION_MAJOR}::Core
+        Qt${QT_VERSION_MAJOR}::Gui
+        Qt${QT_VERSION_MAJOR}::Test
+)
+
+add_test(NAME photo-snap-phase2-transform COMMAND photo-snap-phase2-tests)

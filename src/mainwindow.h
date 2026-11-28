@@ -27,6 +27,9 @@
 
 class QAction;
 class CacheBrowserWindow;
+class CropOverlay;
+class QDoubleSpinBox;
+class QComboBox;
 class QLabel;
 class PhotoView;
 class QToolBar;
@@ -47,6 +50,12 @@ private slots:
     void openPreviousImage();
     void openNextImage();
     void rotateImage();
+    void rotateCounterClockwise();
+    void resetRotation();
+    void setFreeRotation(double degrees);
+    void toggleCrop();
+    void confirmCrop();
+    void cancelCrop();
     void copyImageToClipboard();
     void editExif();
     void toggleFullScreen();
@@ -69,6 +78,11 @@ private:
     QAction *m_fitAction = nullptr;
     QAction *m_actualSizeAction = nullptr;
     QAction *m_rotateAction = nullptr;
+    QAction *m_rotateLeftAction = nullptr;
+    QAction *m_resetRotationAction = nullptr;
+    QAction *m_cropAction = nullptr;
+    QAction *m_confirmCropAction = nullptr;
+    QAction *m_cancelCropAction = nullptr;
     QAction *m_copyAction = nullptr;
     QAction *m_fullScreenAction = nullptr;
     QAction *m_cachedImagesAction = nullptr;
@@ -76,11 +90,16 @@ private:
     QToolButton *m_editExifButton = nullptr;
     QToolButton *m_libraryButton = nullptr;
     QToolButton *m_settingsButton = nullptr;
+    QToolButton *m_applyCropButton = nullptr;
+    QToolButton *m_cancelCropButton = nullptr;
+    QDoubleSpinBox *m_rotationSpin = nullptr;
+    QComboBox *m_cropRatio = nullptr;
     CacheBrowserWindow *m_cacheBrowser = nullptr;
     QString m_currentPath;
     ImageDocument m_document;
     QPixmap m_originalPixmap;
-    int m_rotation = 0;
+    double m_rotation = 0.0;
+    CropOverlay *m_cropOverlay = nullptr;
     QLabel *m_zoomLabel = nullptr;
     bool m_wasMaximized = false;
 };
