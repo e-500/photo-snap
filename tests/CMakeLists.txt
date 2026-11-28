@@ -19,6 +19,8 @@ add_executable(photo-snap-phase1-tests
     ../src/core/PreviewRenderer.h
     ../src/core/ImageTransform.cpp
     ../src/core/ImageTransform.h
+    ../src/core/ImageFilters.cpp
+    ../src/core/ImageFilters.h
 )
 
 target_include_directories(photo-snap-phase1-tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
@@ -47,3 +49,23 @@ target_link_libraries(photo-snap-phase2-tests
 )
 
 add_test(NAME photo-snap-phase2-transform COMMAND photo-snap-phase2-tests)
+
+add_executable(photo-snap-phase3-tests
+    phase3_adjustment_test.cpp
+    ../src/core/ImageTransform.cpp
+    ../src/core/ImageTransform.h
+    ../src/core/ImageFilters.cpp
+    ../src/core/ImageFilters.h
+    ../src/core/PreviewRenderer.cpp
+    ../src/core/PreviewRenderer.h
+)
+
+target_include_directories(photo-snap-phase3-tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(photo-snap-phase3-tests
+    PRIVATE
+        Qt${QT_VERSION_MAJOR}::Core
+        Qt${QT_VERSION_MAJOR}::Gui
+        Qt${QT_VERSION_MAJOR}::Test
+)
+
+add_test(NAME photo-snap-phase3-adjustments COMMAND photo-snap-phase3-tests)

@@ -51,6 +51,10 @@ add_executable(photo-snap WIN32 MACOSX_BUNDLE
     src/core/ImageTransform.h
     src/ui/CropOverlay.cpp
     src/ui/CropOverlay.h
+    src/core/ImageFilters.cpp
+    src/core/ImageFilters.h
+    src/ui/AdjustmentPanel.cpp
+    src/ui/AdjustmentPanel.h
 )
 
 if(APPLE)

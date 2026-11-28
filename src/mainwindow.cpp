@@ -25,6 +25,7 @@
 #include "core/PreviewRenderer.h"
 #include "core/ImageTransform.h"
 #include "ui/CropOverlay.h"
+#include "ui/AdjustmentPanel.h"
 
 #include <QAction>
 #include <QApplication>
@@ -146,6 +147,7 @@ MainWindow::MainWindow(QWidget *parent)
     m_cropOverlay = new CropOverlay(m_view->viewport());
     m_cropOverlay->hide();
     setCentralWidget(centralWidget);
+    m_adjustmentPanel = nullptr;
 
     createActions();
     createToolbar();
@@ -251,6 +253,23 @@ MainWindow::MainWindow(QWidget *parent)
     imageTitleLayout->addWidget(m_libraryButton);
     centralLayout->addWidget(imageTitleBar);
     centralLayout->addWidget(m_view, 1);
+    m_adjustmentPanel = new AdjustmentPanel(centralWidget);
+    centralLayout->addWidget(m_adjustmentPanel);
+    connect(m_adjustmentPanel, &AdjustmentPanel::brightnessChanged,
+            this, &MainWindow::setBrightness);
+    connect(m_adjustmentPanel, &AdjustmentPanel::contrastChanged,
+            this, &MainWindow::setContrast);
+    connect(m_adjustmentPanel, &AdjustmentPanel::saturationChanged,
+            this, &MainWindow::setSaturation);
+    connect(m_adjustmentPanel, &AdjustmentPanel::resetRequested,
+            this, &MainWindow::resetAdjustments);
+    connect(&m_previewRenderer, &PreviewRenderer::previewReady,
+            this, [this](quint64 requestId, const QImage &preview) {
+        if (requestId != m_previewRequestId)
+            return;
+        m_originalPixmap = QPixmap::fromImage(preview);
+        m_view->setPhoto(m_originalPixmap);
+    });
 
     auto *fileMenu = menuBar()->addMenu(tr("&File"));
     QAction *openAction = fileMenu->addAction(tr("&Open…"), this, &MainWindow::chooseImage, QKeySequence::Open);
@@ -535,6 +554,9 @@ void MainWindow::openImage(const QString &path)
         m_rotationSpin->setValue(0.0);
     if (m_cropOverlay)
         m_cropOverlay->hide();
+    m_previewRenderer.clearCache();
+    if (m_adjustmentPanel)
+        m_adjustmentPanel->resetValues();
     PreviewRenderer renderer;
     m_originalPixmap = QPixmap::fromImage(renderer.render(
         m_document.originalImage(), m_document.adjustments()));
@@ -693,6 +715,40 @@ void MainWindow::cancelCrop()
     m_applyCropButton->setVisible(false);
     m_cancelCropButton->setVisible(false);
     m_cropRatio->setVisible(false);
+}
+
+void MainWindow::schedulePreview()
+{
+    if (m_document.originalImage().isNull())
+        return;
+    m_previewRequestId = m_previewRenderer.requestPreview(
+        m_document.originalImage(), m_document.adjustments());
+}
+
+void MainWindow::setBrightness(double value)
+{
+    m_document.setBrightness(value);
+    schedulePreview();
+}
+
+void MainWindow::setContrast(double value)
+{
+    m_document.setContrast(value);
+    schedulePreview();
+}
+
+void MainWindow::setSaturation(double value)
+{
+    m_document.setSaturation(value);
+    schedulePreview();
+}
+
+void MainWindow::resetAdjustments()
+{
+    m_document.resetAdjustments();
+    if (m_adjustmentPanel)
+        m_adjustmentPanel->resetValues();
+    schedulePreview();
 }
 
 void MainWindow::copyImageToClipboard()

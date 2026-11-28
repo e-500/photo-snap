@@ -20,6 +20,7 @@
 
 #include "imagecache.h"
 #include "core/ImageDocument.h"
+#include "core/PreviewRenderer.h"
 
 #include <QMainWindow>
 #include <QPixmap>
@@ -28,6 +29,7 @@
 class QAction;
 class CacheBrowserWindow;
 class CropOverlay;
+class AdjustmentPanel;
 class QDoubleSpinBox;
 class QComboBox;
 class QLabel;
@@ -56,6 +58,10 @@ private slots:
     void toggleCrop();
     void confirmCrop();
     void cancelCrop();
+    void setBrightness(double value);
+    void setContrast(double value);
+    void setSaturation(double value);
+    void resetAdjustments();
     void copyImageToClipboard();
     void editExif();
     void toggleFullScreen();
@@ -67,6 +73,7 @@ private:
     void createToolbar();
     void updateLibraryButtonText();
     void updateNavigationActions();
+    void schedulePreview();
     QStringList imagesInCurrentFolder() const;
     QString imageFilter() const;
 
@@ -100,6 +107,9 @@ private:
     QPixmap m_originalPixmap;
     double m_rotation = 0.0;
     CropOverlay *m_cropOverlay = nullptr;
+    AdjustmentPanel *m_adjustmentPanel = nullptr;
+    PreviewRenderer m_previewRenderer;
+    quint64 m_previewRequestId = 0;
     QLabel *m_zoomLabel = nullptr;
     bool m_wasMaximized = false;
 };
