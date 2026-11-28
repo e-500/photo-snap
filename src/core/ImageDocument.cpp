@@ -112,6 +112,14 @@ void ImageDocument::resetAdjustments()
     emit adjustmentsChanged();
 }
 
+void ImageDocument::setAdjustments(const ImageAdjustments &adjustments)
+{
+    if (m_adjustments == adjustments)
+        return;
+    m_adjustments = adjustments;
+    emit adjustmentsChanged();
+}
+
 void ImageDocument::setGrayscale(bool enabled)
 {
     if (m_adjustments.grayscale == enabled)

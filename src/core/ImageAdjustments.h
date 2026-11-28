@@ -26,4 +26,17 @@ struct ImageAdjustments
             && temperature == 0.0
             && sharpness == 0.0;
     }
+
+    bool operator==(const ImageAdjustments &other) const
+    {
+        return rotation == other.rotation
+            && cropRect == other.cropRect
+            && brightness == other.brightness
+            && contrast == other.contrast
+            && saturation == other.saturation
+            && grayscale == other.grayscale
+            && sepia == other.sepia
+            && temperature == other.temperature
+            && sharpness == other.sharpness;
+    }
 };

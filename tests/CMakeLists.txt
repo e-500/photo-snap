@@ -85,3 +85,21 @@ target_link_libraries(photo-snap-phase4-tests
 )
 
 add_test(NAME photo-snap-phase4-filters COMMAND photo-snap-phase4-tests)
+
+add_executable(photo-snap-phase5-tests
+    phase5_undo_test.cpp
+    ../src/core/ImageDocument.cpp
+    ../src/core/ImageDocument.h
+    ../src/commands/AdjustmentCommand.cpp
+    ../src/commands/AdjustmentCommand.h
+)
+
+target_include_directories(photo-snap-phase5-tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(photo-snap-phase5-tests
+    PRIVATE
+        Qt${QT_VERSION_MAJOR}::Core
+        Qt${QT_VERSION_MAJOR}::Gui
+        Qt${QT_VERSION_MAJOR}::Test
+)
+
+add_test(NAME photo-snap-phase5-undo COMMAND photo-snap-phase5-tests)

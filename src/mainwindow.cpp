@@ -26,6 +26,7 @@
 #include "core/ImageTransform.h"
 #include "ui/CropOverlay.h"
 #include "ui/AdjustmentPanel.h"
+#include "commands/AdjustmentCommand.h"
 
 #include <QAction>
 #include <QApplication>
@@ -69,6 +70,7 @@
 #include <QToolButton>
 #include <QtMath>
 #include <QUrl>
+#include <QUndoStack>
 #include <QHBoxLayout>
 #include <QVBoxLayout>
 
@@ -148,6 +150,7 @@ MainWindow::MainWindow(QWidget *parent)
     m_cropOverlay->hide();
     setCentralWidget(centralWidget);
     m_adjustmentPanel = nullptr;
+    m_undoStack = new QUndoStack(this);
 
     createActions();
     createToolbar();
@@ -271,6 +274,10 @@ MainWindow::MainWindow(QWidget *parent)
             this, &MainWindow::setSharpness);
     connect(m_adjustmentPanel, &AdjustmentPanel::resetRequested,
             this, &MainWindow::resetAdjustments);
+    connect(&m_document, &ImageDocument::adjustmentsChanged,
+            this, &MainWindow::schedulePreview);
+    connect(&m_document, &ImageDocument::documentChanged,
+            this, &MainWindow::updateDocumentTitle);
     connect(&m_previewRenderer, &PreviewRenderer::previewReady,
             this, [this](quint64 requestId, const QImage &preview) {
         if (requestId != m_previewRequestId)
@@ -285,6 +292,10 @@ MainWindow::MainWindow(QWidget *parent)
     fileMenu->addSeparator();
     QAction *quitAction = fileMenu->addAction(tr("&Quit"), qApp, &QApplication::quit, QKeySequence::Quit);
     addAction(quitAction);
+
+    auto *editMenu = menuBar()->addMenu(tr("&Edit"));
+    editMenu->addAction(m_undoAction);
+    editMenu->addAction(m_redoAction);
 
     auto *viewMenu = menuBar()->addMenu(tr("&View"));
     viewMenu->addAction(m_zoomInAction);
@@ -428,9 +439,25 @@ void MainWindow::createActions()
     connect(m_cachedImagesAction, &QAction::triggered, this, &MainWindow::showCachedImages);
     m_cachedImagesAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+B")));
 
+    m_undoAction = m_undoStack->createUndoAction(this, tr("Undo"));
+    m_undoAction->setShortcut(QKeySequence::Undo);
+    m_redoAction = m_undoStack->createRedoAction(this, tr("Redo"));
+    m_redoAction->setShortcut(QKeySequence::Redo);
+    connect(m_undoStack, &QUndoStack::indexChanged,
+            this, [this]() {
+        syncAdjustmentPanel();
+        updateDocumentTitle();
+        schedulePreview();
+    });
+    connect(m_undoStack, &QUndoStack::canUndoChanged,
+            this, &MainWindow::updateDocumentTitle);
+    connect(m_undoStack, &QUndoStack::canRedoChanged,
+            this, &MainWindow::updateDocumentTitle);
+
     for (QAction *action : {m_previousAction, m_nextAction, m_zoomInAction, m_zoomOutAction,
                             m_fitAction, m_actualSizeAction, m_rotateAction, m_copyAction,
-                            m_fullScreenAction, m_cachedImagesAction})
+                            m_fullScreenAction, m_cachedImagesAction,
+                            m_undoAction, m_redoAction})
         addAction(action);
 }
 
@@ -557,6 +584,7 @@ void MainWindow::openImage(const QString &path)
     m_copyAction->setEnabled(true);
     m_originalPixmap = QPixmap::fromImage(image);
     m_document.setImage(image, m_currentPath);
+    m_undoStack->clear();
     m_rotation = 0;
     if (m_rotationSpin)
         m_rotationSpin->setValue(0.0);
@@ -635,10 +663,14 @@ void MainWindow::rotateImage()
 {
     if (m_document.originalImage().isNull())
         return;
+    const ImageAdjustments before = m_document.adjustments();
     m_rotation = ImageTransform::addQuarterTurn(m_rotation);
     if (m_rotationSpin)
         m_rotationSpin->setValue(m_rotation);
     m_document.setRotation(m_rotation);
+    const ImageAdjustments after = m_document.adjustments();
+    pushAdjustment(tr("Rotate"), AdjustmentCommand::RotationId,
+                   before, after);
     PreviewRenderer renderer;
     m_originalPixmap = QPixmap::fromImage(renderer.render(
         m_document.originalImage(), m_document.adjustments()));
@@ -649,10 +681,14 @@ void MainWindow::rotateCounterClockwise()
 {
     if (m_document.originalImage().isNull())
         return;
+    const ImageAdjustments before = m_document.adjustments();
     m_rotation = ImageTransform::normalizeRotation(m_rotation - 90.0);
     if (m_rotationSpin)
         m_rotationSpin->setValue(m_rotation);
     m_document.setRotation(m_rotation);
+    const ImageAdjustments after = m_document.adjustments();
+    pushAdjustment(tr("Rotate"), AdjustmentCommand::RotationId,
+                   before, after);
     PreviewRenderer renderer;
     m_originalPixmap = QPixmap::fromImage(renderer.render(
         m_document.originalImage(), m_document.adjustments()));
@@ -661,10 +697,13 @@ void MainWindow::rotateCounterClockwise()
 
 void MainWindow::resetRotation()
 {
+    const ImageAdjustments before = m_document.adjustments();
     m_rotation = 0.0;
     if (m_rotationSpin)
         m_rotationSpin->setValue(0.0);
     m_document.setRotation(0.0);
+    pushAdjustment(tr("Reset rotation"), AdjustmentCommand::RotationId,
+                   before, m_document.adjustments());
     PreviewRenderer renderer;
     m_originalPixmap = QPixmap::fromImage(renderer.render(
         m_document.originalImage(), m_document.adjustments()));
@@ -675,8 +714,13 @@ void MainWindow::setFreeRotation(double degrees)
 {
     if (m_document.originalImage().isNull())
         return;
+    if (m_applyingAdjustmentState)
+        return;
+    const ImageAdjustments before = m_document.adjustments();
     m_rotation = ImageTransform::normalizeRotation(degrees);
     m_document.setRotation(m_rotation);
+    pushAdjustment(tr("Rotate"), AdjustmentCommand::RotationId,
+                   before, m_document.adjustments());
     PreviewRenderer renderer;
     m_originalPixmap = QPixmap::fromImage(renderer.render(
         m_document.originalImage(), m_document.adjustments()));
@@ -691,6 +735,7 @@ void MainWindow::toggleCrop()
         cancelCrop();
         return;
     }
+    m_cropBefore = m_document.adjustments();
     m_cropOverlay->setGeometry(m_view->viewport()->rect());
     m_cropOverlay->resetSelection();
     m_cropOverlay->show();
@@ -704,6 +749,8 @@ void MainWindow::confirmCrop()
 {
     if (!m_cropOverlay->isVisible())
         return;
+    pushAdjustment(tr("Crop"), AdjustmentCommand::CropId,
+                   m_cropBefore, m_document.adjustments());
     m_cropOverlay->hide();
     m_applyCropButton->setVisible(false);
     m_cancelCropButton->setVisible(false);
@@ -713,7 +760,7 @@ void MainWindow::confirmCrop()
 void MainWindow::cancelCrop()
 {
     if (m_cropOverlay->isVisible()) {
-        m_document.setCropRect(QRectF(0.0, 0.0, 1.0, 1.0));
+        m_document.setAdjustments(m_cropBefore);
         PreviewRenderer renderer;
         m_originalPixmap = QPixmap::fromImage(renderer.render(
             m_document.originalImage(), m_document.adjustments()));
@@ -733,54 +780,135 @@ void MainWindow::schedulePreview()
         m_document.originalImage(), m_document.adjustments());
 }
 
+void MainWindow::pushAdjustment(const QString &text, int id,
+                                const ImageAdjustments &before,
+                                const ImageAdjustments &after)
+{
+    if (before == after)
+        return;
+    m_undoStack->push(new AdjustmentCommand(
+        &m_document, before, after, text, id));
+}
+
+void MainWindow::syncAdjustmentPanel()
+{
+    if (!m_adjustmentPanel)
+        return;
+    m_applyingAdjustmentState = true;
+    m_adjustmentPanel->setValues(m_document.adjustments());
+    m_rotationSpin->setValue(m_document.adjustments().rotation);
+    m_applyingAdjustmentState = false;
+}
+
+void MainWindow::updateDocumentTitle()
+{
+    if (m_currentPath.isEmpty()) {
+        setWindowTitle(QStringLiteral("Photo Snap"));
+        return;
+    }
+    const QString modified = m_document.isModified() ? QStringLiteral(" *") : QString();
+    setWindowTitle(QStringLiteral("%1%2 — Photo Snap")
+                       .arg(QFileInfo(m_currentPath).fileName(), modified));
+}
+
 void MainWindow::setBrightness(double value)
 {
+    if (m_applyingAdjustmentState)
+        return;
+    const ImageAdjustments before = m_document.adjustments();
     m_document.setBrightness(value);
+    pushAdjustment(tr("Brightness"), AdjustmentCommand::BrightnessId,
+                   before, m_document.adjustments());
     schedulePreview();
 }
 
 void MainWindow::setContrast(double value)
 {
+    if (m_applyingAdjustmentState)
+        return;
+    const ImageAdjustments before = m_document.adjustments();
     m_document.setContrast(value);
+    pushAdjustment(tr("Contrast"), AdjustmentCommand::ContrastId,
+                   before, m_document.adjustments());
     schedulePreview();
 }
 
 void MainWindow::setSaturation(double value)
 {
+    if (m_applyingAdjustmentState)
+        return;
+    const ImageAdjustments before = m_document.adjustments();
     m_document.setSaturation(value);
+    pushAdjustment(tr("Saturation"), AdjustmentCommand::SaturationId,
+                   before, m_document.adjustments());
     schedulePreview();
 }
 
 void MainWindow::setGrayscale(bool enabled)
 {
+    if (m_applyingAdjustmentState)
+        return;
+    const ImageAdjustments before = m_document.adjustments();
     m_document.setGrayscale(enabled);
+    pushAdjustment(tr("Black and white"), AdjustmentCommand::GrayscaleId,
+                   before, m_document.adjustments());
     schedulePreview();
 }
 
 void MainWindow::setSepia(bool enabled)
 {
+    if (m_applyingAdjustmentState)
+        return;
+    const ImageAdjustments before = m_document.adjustments();
     m_document.setSepia(enabled);
+    pushAdjustment(tr("Sepia"), AdjustmentCommand::SepiaId,
+                   before, m_document.adjustments());
     schedulePreview();
 }
 
 void MainWindow::setTemperature(double value)
 {
+    if (m_applyingAdjustmentState)
+        return;
+    const ImageAdjustments before = m_document.adjustments();
     m_document.setTemperature(value);
+    pushAdjustment(tr("Temperature"), AdjustmentCommand::TemperatureId,
+                   before, m_document.adjustments());
     schedulePreview();
 }
 
 void MainWindow::setSharpness(double value)
 {
+    if (m_applyingAdjustmentState)
+        return;
+    const ImageAdjustments before = m_document.adjustments();
     m_document.setSharpness(value);
+    pushAdjustment(tr("Sharpness"), AdjustmentCommand::SharpnessId,
+                   before, m_document.adjustments());
     schedulePreview();
 }
 
 void MainWindow::resetAdjustments()
 {
+    const ImageAdjustments before = m_document.adjustments();
+    m_applyingAdjustmentState = true;
     m_document.resetAdjustments();
     if (m_adjustmentPanel)
         m_adjustmentPanel->resetValues();
+    m_applyingAdjustmentState = false;
+    pushAdjustment(tr("Reset adjustments"), AdjustmentCommand::ResetId,
+                   before, m_document.adjustments());
     schedulePreview();
+}
+
+void MainWindow::undo()
+{
+    m_undoStack->undo();
+}
+
+void MainWindow::redo()
+{
+    m_undoStack->redo();
 }
 
 void MainWindow::copyImageToClipboard()

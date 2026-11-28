@@ -1,5 +1,7 @@
 #pragma once
 
+#include "../core/ImageAdjustments.h"
+
 #include <QWidget>
 
 class QDoubleSpinBox;
@@ -14,6 +16,7 @@ class AdjustmentPanel final : public QWidget
 public:
     explicit AdjustmentPanel(QWidget *parent = nullptr);
     void resetValues();
+    void setValues(const ImageAdjustments &adjustments);
 
 signals:
     void brightnessChanged(double value);

@@ -30,6 +30,7 @@ class QAction;
 class CacheBrowserWindow;
 class CropOverlay;
 class AdjustmentPanel;
+class QUndoStack;
 class QDoubleSpinBox;
 class QComboBox;
 class QLabel;
@@ -66,6 +67,8 @@ private slots:
     void setTemperature(double value);
     void setSharpness(double value);
     void resetAdjustments();
+    void undo();
+    void redo();
     void copyImageToClipboard();
     void editExif();
     void toggleFullScreen();
@@ -78,6 +81,11 @@ private:
     void updateLibraryButtonText();
     void updateNavigationActions();
     void schedulePreview();
+    void pushAdjustment(const QString &text, int id,
+                        const ImageAdjustments &before,
+                        const ImageAdjustments &after);
+    void updateDocumentTitle();
+    void syncAdjustmentPanel();
     QStringList imagesInCurrentFolder() const;
     QString imageFilter() const;
 
@@ -114,6 +122,11 @@ private:
     AdjustmentPanel *m_adjustmentPanel = nullptr;
     PreviewRenderer m_previewRenderer;
     quint64 m_previewRequestId = 0;
+    QUndoStack *m_undoStack = nullptr;
+    QAction *m_undoAction = nullptr;
+    QAction *m_redoAction = nullptr;
+    bool m_applyingAdjustmentState = false;
+    ImageAdjustments m_cropBefore;
     QLabel *m_zoomLabel = nullptr;
     bool m_wasMaximized = false;
 };

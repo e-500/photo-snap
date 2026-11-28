@@ -21,6 +21,7 @@ public:
     const ImageAdjustments &adjustments() const;
     const QString &path() const;
     bool isModified() const;
+    void setAdjustments(const ImageAdjustments &adjustments);
 
     void setRotation(double degrees);
     void setCropRect(const QRectF &cropRect);

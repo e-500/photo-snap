@@ -142,3 +142,14 @@ void AdjustmentPanel::resetValues()
     m_temperatureSpin->setValue(0.0);
     m_sharpnessSpin->setValue(0.0);
 }
+
+void AdjustmentPanel::setValues(const ImageAdjustments &adjustments)
+{
+    m_brightnessSpin->setValue(adjustments.brightness);
+    m_contrastSpin->setValue(adjustments.contrast);
+    m_saturationSpin->setValue(adjustments.saturation);
+    m_grayscale->setChecked(adjustments.grayscale);
+    m_sepia->setChecked(adjustments.sepia);
+    m_temperatureSpin->setValue(adjustments.temperature);
+    m_sharpnessSpin->setValue(adjustments.sharpness);
+}
