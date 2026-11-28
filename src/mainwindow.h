@@ -74,6 +74,7 @@ private slots:
     void toggleFullScreen();
     void updateZoomLabel(qreal factor);
     void openSettings();
+    void exportImage();
 
 private:
     void createActions();
@@ -103,6 +104,7 @@ private:
     QAction *m_confirmCropAction = nullptr;
     QAction *m_cancelCropAction = nullptr;
     QAction *m_copyAction = nullptr;
+    QAction *m_exportAction = nullptr;
     QAction *m_fullScreenAction = nullptr;
     QAction *m_cachedImagesAction = nullptr;
     QToolBar *m_toolbar = nullptr;

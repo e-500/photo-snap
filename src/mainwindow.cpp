@@ -27,6 +27,7 @@
 #include "ui/CropOverlay.h"
 #include "ui/AdjustmentPanel.h"
 #include "commands/AdjustmentCommand.h"
+#include "core/ImageExporter.h"
 
 #include <QAction>
 #include <QApplication>
@@ -62,6 +63,7 @@
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QStandardPaths>
+#include <QSpinBox>
 #include <QStatusBar>
 #include <QStyle>
 #include <QSettings>
@@ -290,6 +292,8 @@ MainWindow::MainWindow(QWidget *parent)
     QAction *openAction = fileMenu->addAction(tr("&Open…"), this, &MainWindow::chooseImage, QKeySequence::Open);
     addAction(openAction);
     fileMenu->addSeparator();
+    fileMenu->addAction(m_exportAction);
+    fileMenu->addSeparator();
     QAction *quitAction = fileMenu->addAction(tr("&Quit"), qApp, &QApplication::quit, QKeySequence::Quit);
     addAction(quitAction);
 
@@ -431,6 +435,11 @@ void MainWindow::createActions()
     m_copyAction->setEnabled(false);
     connect(m_copyAction, &QAction::triggered, this, &MainWindow::copyImageToClipboard);
 
+    m_exportAction = new QAction(tr("Export…"), this);
+    m_exportAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+E")));
+    m_exportAction->setEnabled(false);
+    connect(m_exportAction, &QAction::triggered, this, &MainWindow::exportImage);
+
     m_fullScreenAction = new QAction(tr("Full screen"), this);
     m_fullScreenAction->setShortcut(QKeySequence(Qt::Key_F11));
     connect(m_fullScreenAction, &QAction::triggered, this, &MainWindow::toggleFullScreen);
@@ -456,7 +465,7 @@ void MainWindow::createActions()
 
     for (QAction *action : {m_previousAction, m_nextAction, m_zoomInAction, m_zoomOutAction,
                             m_fitAction, m_actualSizeAction, m_rotateAction, m_copyAction,
-                            m_fullScreenAction, m_cachedImagesAction,
+                            m_fullScreenAction, m_cachedImagesAction, m_exportAction,
                             m_undoAction, m_redoAction})
         addAction(action);
 }
@@ -582,6 +591,7 @@ void MainWindow::openImage(const QString &path)
     m_currentPath = QFileInfo(path).absoluteFilePath();
     m_editExifButton->setEnabled(true);
     m_copyAction->setEnabled(true);
+    m_exportAction->setEnabled(true);
     m_originalPixmap = QPixmap::fromImage(image);
     m_document.setImage(image, m_currentPath);
     m_undoStack->clear();
@@ -909,6 +919,74 @@ void MainWindow::undo()
 void MainWindow::redo()
 {
     m_undoStack->redo();
+}
+
+void MainWindow::exportImage()
+{
+    if (m_document.originalImage().isNull())
+        return;
+
+    QDialog dialog(this);
+    dialog.setWindowTitle(tr("Export photo"));
+    auto *layout = new QVBoxLayout(&dialog);
+    auto *form = new QFormLayout;
+
+    auto *format = new QComboBox(&dialog);
+    format->addItem(tr("JPEG"), QStringLiteral("jpg"));
+    format->addItem(tr("PNG"), QStringLiteral("png"));
+    format->addItem(tr("TIFF"), QStringLiteral("tiff"));
+    form->addRow(tr("Format"), format);
+
+    auto *quality = new QSpinBox(&dialog);
+    quality->setRange(1, 100);
+    quality->setValue(92);
+    quality->setSuffix(QStringLiteral(" %"));
+    form->addRow(tr("JPEG quality"), quality);
+    layout->addLayout(form);
+
+    auto *buttons = new QDialogButtonBox(
+        QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    layout->addWidget(buttons);
+    if (dialog.exec() != QDialog::Accepted)
+        return;
+
+    const QString extension = format->currentData().toString();
+    QString selectedFilter;
+    const QString filters = tr("JPEG (*.jpg *.jpeg);;PNG (*.png);;TIFF (*.tif *.tiff)");
+    if (extension == QStringLiteral("png"))
+        selectedFilter = tr("PNG (*.png)");
+    else if (extension == QStringLiteral("tiff"))
+        selectedFilter = tr("TIFF (*.tif *.tiff)");
+    else
+        selectedFilter = tr("JPEG (*.jpg *.jpeg)");
+    QString defaultName = QFileInfo(m_currentPath).completeBaseName();
+    defaultName += QStringLiteral("-edited.");
+    defaultName += extension;
+    const QString target = QFileDialog::getSaveFileName(
+        this, tr("Export photo"),
+        QDir(QFileInfo(m_currentPath).absolutePath()).filePath(defaultName),
+        filters, &selectedFilter);
+    if (target.isEmpty())
+        return;
+
+    QString targetPath = target;
+    if (QFileInfo(targetPath).suffix().isEmpty())
+        targetPath += QStringLiteral(".") + extension;
+
+    ImageExporter exporter;
+    QString error;
+    if (!exporter.exportImage(m_document.originalImage(),
+                              m_document.adjustments(),
+                              m_document.path(),
+                              targetPath,
+                              quality->value(),
+                              &error)) {
+        QMessageBox::warning(this, tr("Export failed"), error);
+        return;
+    }
+    statusBar()->showMessage(tr("Photo exported to %1").arg(targetPath), 5000);
 }
 
 void MainWindow::copyImageToClipboard()

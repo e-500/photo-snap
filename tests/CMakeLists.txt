@@ -103,3 +103,25 @@ target_link_libraries(photo-snap-phase5-tests
 )
 
 add_test(NAME photo-snap-phase5-undo COMMAND photo-snap-phase5-tests)
+
+add_executable(photo-snap-phase6-tests
+    phase6_export_test.cpp
+    ../src/core/ImageExporter.cpp
+    ../src/core/ImageExporter.h
+    ../src/core/PreviewRenderer.cpp
+    ../src/core/PreviewRenderer.h
+    ../src/core/ImageTransform.cpp
+    ../src/core/ImageTransform.h
+    ../src/core/ImageFilters.cpp
+    ../src/core/ImageFilters.h
+)
+
+target_include_directories(photo-snap-phase6-tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(photo-snap-phase6-tests
+    PRIVATE
+        Qt${QT_VERSION_MAJOR}::Core
+        Qt${QT_VERSION_MAJOR}::Gui
+        Qt${QT_VERSION_MAJOR}::Test
+)
+
+add_test(NAME photo-snap-phase6-export COMMAND photo-snap-phase6-tests)

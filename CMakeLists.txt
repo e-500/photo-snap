@@ -57,6 +57,8 @@ add_executable(photo-snap WIN32 MACOSX_BUNDLE
     src/ui/AdjustmentPanel.h
     src/commands/AdjustmentCommand.cpp
     src/commands/AdjustmentCommand.h
+    src/core/ImageExporter.cpp
+    src/core/ImageExporter.h
 )
 
 if(APPLE)
