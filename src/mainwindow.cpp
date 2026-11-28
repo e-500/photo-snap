@@ -22,6 +22,7 @@
 #include "cachebrowserwindow.h"
 #include "imagemetadata.h"
 #include "language.h"
+#include "core/PreviewRenderer.h"
 
 #include <QAction>
 #include <QApplication>
@@ -448,7 +449,11 @@ void MainWindow::openImage(const QString &path)
     m_editExifButton->setEnabled(true);
     m_copyAction->setEnabled(true);
     m_originalPixmap = QPixmap::fromImage(image);
+    m_document.setImage(image, m_currentPath);
     m_rotation = 0;
+    PreviewRenderer renderer;
+    m_originalPixmap = QPixmap::fromImage(renderer.render(
+        m_document.originalImage(), m_document.adjustments()));
     m_view->setPhoto(m_originalPixmap);
     setWindowTitle(QStringLiteral("%1 — Photo Snap").arg(QFileInfo(m_currentPath).fileName()));
     QStringList details = {
@@ -514,11 +519,14 @@ void MainWindow::openNextImage()
 
 void MainWindow::rotateImage()
 {
-    if (m_originalPixmap.isNull())
+    if (m_document.originalImage().isNull())
         return;
     m_rotation = (m_rotation + 90) % 360;
-    const QPixmap rotated = m_originalPixmap.transformed(QTransform().rotate(m_rotation), Qt::SmoothTransformation);
-    m_view->setPhoto(rotated);
+    m_document.setRotation(m_rotation);
+    PreviewRenderer renderer;
+    m_originalPixmap = QPixmap::fromImage(renderer.render(
+        m_document.originalImage(), m_document.adjustments()));
+    m_view->setPhoto(m_originalPixmap);
 }
 
 void MainWindow::copyImageToClipboard()
@@ -558,10 +566,11 @@ void MainWindow::copyImageToClipboard()
         statusBar()->showMessage(tr("%1 selected photo(s) copied to clipboard").arg(selectedPaths.size()), 2500);
         return;
     }
-    if (m_originalPixmap.isNull())
+    if (m_document.originalImage().isNull())
         return;
-    const QPixmap displayedPixmap = m_originalPixmap.transformed(
-        QTransform().rotate(m_rotation), Qt::SmoothTransformation);
+    PreviewRenderer renderer;
+    const QPixmap displayedPixmap = QPixmap::fromImage(renderer.render(
+        m_document.originalImage(), m_document.adjustments()));
     auto *mimeData = new QMimeData;
     const QUrl currentFileUrl = QUrl::fromLocalFile(m_currentPath);
     mimeData->setUrls({currentFileUrl});

@@ -19,6 +19,7 @@
 #pragma once
 
 #include "imagecache.h"
+#include "core/ImageDocument.h"
 
 #include <QMainWindow>
 #include <QPixmap>
@@ -77,6 +78,7 @@ private:
     QToolButton *m_settingsButton = nullptr;
     CacheBrowserWindow *m_cacheBrowser = nullptr;
     QString m_currentPath;
+    ImageDocument m_document;
     QPixmap m_originalPixmap;
     int m_rotation = 0;
     QLabel *m_zoomLabel = nullptr;

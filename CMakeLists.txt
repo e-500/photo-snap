@@ -42,6 +42,11 @@ add_executable(photo-snap WIN32 MACOSX_BUNDLE
     src/imagelibrarywidget.cpp
     src/imagelibrarywidget.h
     src/selectedimages.h
+    src/core/ImageAdjustments.h
+    src/core/ImageDocument.cpp
+    src/core/ImageDocument.h
+    src/core/PreviewRenderer.cpp
+    src/core/PreviewRenderer.h
 )
 
 if(APPLE)
