@@ -111,3 +111,35 @@ void ImageDocument::resetAdjustments()
     m_adjustments = ImageAdjustments();
     emit adjustmentsChanged();
 }
+
+void ImageDocument::setGrayscale(bool enabled)
+{
+    if (m_adjustments.grayscale == enabled)
+        return;
+    m_adjustments.grayscale = enabled;
+    emit adjustmentsChanged();
+}
+
+void ImageDocument::setSepia(bool enabled)
+{
+    if (m_adjustments.sepia == enabled)
+        return;
+    m_adjustments.sepia = enabled;
+    emit adjustmentsChanged();
+}
+
+void ImageDocument::setTemperature(double temperature)
+{
+    if (m_adjustments.temperature == temperature)
+        return;
+    m_adjustments.temperature = temperature;
+    emit adjustmentsChanged();
+}
+
+void ImageDocument::setSharpness(double sharpness)
+{
+    if (m_adjustments.sharpness == sharpness)
+        return;
+    m_adjustments.sharpness = sharpness;
+    emit adjustmentsChanged();
+}

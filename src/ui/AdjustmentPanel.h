@@ -5,6 +5,7 @@
 class QDoubleSpinBox;
 class QSlider;
 class QToolButton;
+class QCheckBox;
 
 class AdjustmentPanel final : public QWidget
 {
@@ -18,6 +19,10 @@ signals:
     void brightnessChanged(double value);
     void contrastChanged(double value);
     void saturationChanged(double value);
+    void grayscaleChanged(bool enabled);
+    void sepiaChanged(bool enabled);
+    void temperatureChanged(double value);
+    void sharpnessChanged(double value);
     void resetRequested();
 
 private:
@@ -30,4 +35,8 @@ private:
     QDoubleSpinBox *m_brightnessSpin = nullptr;
     QDoubleSpinBox *m_contrastSpin = nullptr;
     QDoubleSpinBox *m_saturationSpin = nullptr;
+    QCheckBox *m_grayscale = nullptr;
+    QCheckBox *m_sepia = nullptr;
+    QDoubleSpinBox *m_temperatureSpin = nullptr;
+    QDoubleSpinBox *m_sharpnessSpin = nullptr;
 };

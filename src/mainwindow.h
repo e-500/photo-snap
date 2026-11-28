@@ -61,6 +61,10 @@ private slots:
     void setBrightness(double value);
     void setContrast(double value);
     void setSaturation(double value);
+    void setGrayscale(bool enabled);
+    void setSepia(bool enabled);
+    void setTemperature(double value);
+    void setSharpness(double value);
     void resetAdjustments();
     void copyImageToClipboard();
     void editExif();

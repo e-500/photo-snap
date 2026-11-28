@@ -261,6 +261,14 @@ MainWindow::MainWindow(QWidget *parent)
             this, &MainWindow::setContrast);
     connect(m_adjustmentPanel, &AdjustmentPanel::saturationChanged,
             this, &MainWindow::setSaturation);
+    connect(m_adjustmentPanel, &AdjustmentPanel::grayscaleChanged,
+            this, &MainWindow::setGrayscale);
+    connect(m_adjustmentPanel, &AdjustmentPanel::sepiaChanged,
+            this, &MainWindow::setSepia);
+    connect(m_adjustmentPanel, &AdjustmentPanel::temperatureChanged,
+            this, &MainWindow::setTemperature);
+    connect(m_adjustmentPanel, &AdjustmentPanel::sharpnessChanged,
+            this, &MainWindow::setSharpness);
     connect(m_adjustmentPanel, &AdjustmentPanel::resetRequested,
             this, &MainWindow::resetAdjustments);
     connect(&m_previewRenderer, &PreviewRenderer::previewReady,
@@ -740,6 +748,30 @@ void MainWindow::setContrast(double value)
 void MainWindow::setSaturation(double value)
 {
     m_document.setSaturation(value);
+    schedulePreview();
+}
+
+void MainWindow::setGrayscale(bool enabled)
+{
+    m_document.setGrayscale(enabled);
+    schedulePreview();
+}
+
+void MainWindow::setSepia(bool enabled)
+{
+    m_document.setSepia(enabled);
+    schedulePreview();
+}
+
+void MainWindow::setTemperature(double value)
+{
+    m_document.setTemperature(value);
+    schedulePreview();
+}
+
+void MainWindow::setSharpness(double value)
+{
+    m_document.setSharpness(value);
     schedulePreview();
 }
 

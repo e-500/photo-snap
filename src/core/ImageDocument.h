@@ -27,6 +27,10 @@ public:
     void setBrightness(double brightness);
     void setContrast(double contrast);
     void setSaturation(double saturation);
+    void setGrayscale(bool enabled);
+    void setSepia(bool enabled);
+    void setTemperature(double temperature);
+    void setSharpness(double sharpness);
     void resetAdjustments();
 
 signals:

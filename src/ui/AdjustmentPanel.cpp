@@ -6,6 +6,7 @@
 #include <QPushButton>
 #include <QSlider>
 #include <QVBoxLayout>
+#include <QCheckBox>
 
 AdjustmentPanel::AdjustmentPanel(QWidget *parent)
     : QWidget(parent)
@@ -36,6 +37,25 @@ AdjustmentPanel::AdjustmentPanel(QWidget *parent)
     saturationLayout->addWidget(m_saturation);
     saturationLayout->addWidget(m_saturationSpin);
     layout->addLayout(saturationLayout);
+
+    auto *effectsLayout = new QVBoxLayout;
+    m_grayscale = new QCheckBox(tr("Black and white"), this);
+    m_sepia = new QCheckBox(tr("Sepia"), this);
+    effectsLayout->addWidget(m_grayscale);
+    effectsLayout->addWidget(m_sepia);
+    layout->addLayout(effectsLayout);
+
+    auto *temperatureLayout = new QVBoxLayout;
+    temperatureLayout->addWidget(new QLabel(tr("Temperature"), this));
+    m_temperatureSpin = createSpin(-1.0, 1.0, 0.01);
+    temperatureLayout->addWidget(m_temperatureSpin);
+    layout->addLayout(temperatureLayout);
+
+    auto *sharpnessLayout = new QVBoxLayout;
+    sharpnessLayout->addWidget(new QLabel(tr("Sharpness"), this));
+    m_sharpnessSpin = createSpin(-1.0, 1.0, 0.01);
+    sharpnessLayout->addWidget(m_sharpnessSpin);
+    layout->addLayout(sharpnessLayout);
 
     auto *resetButton = new QPushButton(tr("Reset adjustments"), this);
     layout->addWidget(resetButton);
@@ -80,6 +100,14 @@ AdjustmentPanel::AdjustmentPanel(QWidget *parent)
     });
 
     connect(resetButton, &QPushButton::clicked, this, &AdjustmentPanel::resetRequested);
+    connect(m_grayscale, &QCheckBox::toggled,
+            this, &AdjustmentPanel::grayscaleChanged);
+    connect(m_sepia, &QCheckBox::toggled,
+            this, &AdjustmentPanel::sepiaChanged);
+    connect(m_temperatureSpin, qOverload<double>(&QDoubleSpinBox::valueChanged),
+            this, &AdjustmentPanel::temperatureChanged);
+    connect(m_sharpnessSpin, qOverload<double>(&QDoubleSpinBox::valueChanged),
+            this, &AdjustmentPanel::sharpnessChanged);
     resetValues();
 }
 
@@ -109,4 +137,8 @@ void AdjustmentPanel::resetValues()
     m_contrastSpin->setValue(1.0);
     m_saturation->setValue(100);
     m_saturationSpin->setValue(1.0);
+    m_grayscale->setChecked(false);
+    m_sepia->setChecked(false);
+    m_temperatureSpin->setValue(0.0);
+    m_sharpnessSpin->setValue(0.0);
 }
