@@ -204,6 +204,7 @@ int main(int argc, char *argv[])
 {
     QCoreApplication app(argc, argv);
     QCoreApplication::setApplicationName(QStringLiteral("Photo Snap"));
+    QCoreApplication::setApplicationVersion(QStringLiteral("1.1.0"));
     QCoreApplication::setOrganizationName(QStringLiteral("Photo Snap"));
 
     QCommandLineParser parser;

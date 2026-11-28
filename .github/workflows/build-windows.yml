@@ -44,7 +44,7 @@ jobs:
           if (-not (Test-Path $iscc)) {
             throw "Inno Setup compiler was not found at $iscc"
           }
-          & $iscc /DAppVersion=1.0.0 installers\photo-snap.iss
+          & $iscc /DAppVersion=1.1.0 installers\photo-snap.iss
           if ($LASTEXITCODE -ne 0) {
             throw "Inno Setup failed with exit code $LASTEXITCODE"
           }

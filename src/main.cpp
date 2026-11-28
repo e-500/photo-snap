@@ -33,7 +33,7 @@ int main(int argc, char *argv[])
     app.setStyle(QStringLiteral("Fusion"));
 #endif
     QCoreApplication::setApplicationName(QStringLiteral("Photo Snap"));
-    QCoreApplication::setApplicationVersion(QStringLiteral("1.0.0"));
+    QCoreApplication::setApplicationVersion(QStringLiteral("1.1.0"));
     QCoreApplication::setOrganizationName(QStringLiteral("Photo Snap"));
     const QString language = normalizedLanguage(QSettings().value(QStringLiteral("language"),
                                                                      QStringLiteral("EN-GB")).toString());

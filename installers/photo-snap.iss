@@ -1,7 +1,7 @@
 #define AppName "Photo Snap"
 #define AppPublisher "Photo Snap"
 #ifndef AppVersion
-  #define AppVersion "1.0.0"
+  #define AppVersion "1.1.0"
 #endif
 
 [Setup]

@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(PhotoSnap VERSION 1.0.0 LANGUAGES CXX)
+project(PhotoSnap VERSION 1.1.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -10,8 +10,9 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTORCC ON)
 
-find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Widgets Sql Network)
-find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Widgets Sql Network)
+find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Widgets Sql Network Test)
+find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Widgets Sql Network Test)
+include(CTest)
 
 set(PHOTOSNAP_PLATFORM_ICON)
 if(WIN32)
@@ -96,3 +97,7 @@ else()
 endif()
 
 add_subdirectory(tools/03-scan-cache)
+
+if(BUILD_TESTING)
+    add_subdirectory(tests)
+endif()

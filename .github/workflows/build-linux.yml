@@ -64,7 +64,7 @@ jobs:
 
           cat > "$package_dir/DEBIAN/control" <<CONTROL
           Package: photo-snap
-          Version: 1.0.0
+          Version: 1.1.0
           Section: graphics
           Priority: optional
           Architecture: amd64
@@ -74,11 +74,11 @@ jobs:
            Photo Snap is a cross-platform desktop application for managing a domestic photo archive.
           CONTROL
 
-          dpkg-deb --build --root-owner-group "$package_dir" output/photo-snap_1.0.0_amd64.deb
+          dpkg-deb --build --root-owner-group "$package_dir" output/photo-snap_1.1.0_amd64.deb
 
       - name: Upload Linux artifact
         uses: actions/upload-artifact@v4
         with:
           name: photo-snap-linux
-          path: output/photo-snap_1.0.0_amd64.deb
+          path: output/photo-snap_1.1.0_amd64.deb
           if-no-files-found: error

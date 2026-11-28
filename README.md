@@ -13,7 +13,7 @@ No subscription. No cloud library. No reshuffling your archive.
 Downloads (latest release):
 - [Windows installer](https://github.com/e-500/photo-snap/releases/latest/download/Photo-Snap-Setup.exe)
 - [macOS package](https://github.com/e-500/photo-snap/releases/latest/download/Photo-Snap.dmg)
-- [Linux package](https://github.com/e-500/photo-snap/releases/latest/download/photo-snap_1.0.0_amd64.deb)
+- [Linux package](https://github.com/e-500/photo-snap/releases/latest/download/photo-snap_1.1.0_amd64.deb)
 
 The interface is available in **English (UK)**, **English (US)**, **Italian**, **German**, **French**, and **Spanish**. Use the language selector in the photo bar; restart Photo Snap to apply a change. English (UK) is the default.
 
