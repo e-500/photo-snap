@@ -289,12 +289,18 @@ MainWindow::MainWindow(QWidget *parent)
     });
 
     auto *fileMenu = menuBar()->addMenu(tr("&File"));
-    QAction *openAction = fileMenu->addAction(tr("&Open…"), this, &MainWindow::chooseImage, QKeySequence::Open);
+    QAction *openAction = new QAction(tr("&Open…"), this);
+    openAction->setShortcut(QKeySequence::Open);
+    connect(openAction, &QAction::triggered, this, &MainWindow::chooseImage);
+    fileMenu->addAction(openAction);
     addAction(openAction);
     fileMenu->addSeparator();
     fileMenu->addAction(m_exportAction);
     fileMenu->addSeparator();
-    QAction *quitAction = fileMenu->addAction(tr("&Quit"), qApp, &QApplication::quit, QKeySequence::Quit);
+    QAction *quitAction = new QAction(tr("&Quit"), this);
+    quitAction->setShortcut(QKeySequence::Quit);
+    connect(quitAction, &QAction::triggered, qApp, &QApplication::quit);
+    fileMenu->addAction(quitAction);
     addAction(quitAction);
 
     auto *editMenu = menuBar()->addMenu(tr("&Edit"));

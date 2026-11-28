@@ -6,6 +6,7 @@
 #include <QObject>
 #include <QTimer>
 #include <QHash>
+#include <QString>
 
 class PreviewRenderer final : public QObject
 {
@@ -14,6 +15,8 @@ class PreviewRenderer final : public QObject
 public:
     explicit PreviewRenderer(QObject *parent = nullptr);
     QImage render(const QImage &original, const ImageAdjustments &adjustments) const;
+    QImage renderPreview(const QImage &original,
+                         const ImageAdjustments &adjustments) const;
     quint64 requestPreview(const QImage &original, const ImageAdjustments &adjustments);
     void clearCache();
 
@@ -29,5 +32,7 @@ private:
     quint64 m_deliveredRequestId = 0;
     QImage m_pendingOriginal;
     ImageAdjustments m_pendingAdjustments;
-    QHash<quint64, QImage> m_cache;
+    mutable QHash<QString, QImage> m_cache;
+    QString cacheKey(const QImage &original,
+                     const ImageAdjustments &adjustments) const;
 };

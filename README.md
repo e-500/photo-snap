@@ -32,6 +32,9 @@ For each photo, the cache records its path, metadata, thumbnail, and a SHA-256 c
 ## Made for everyday photo sorting
 
 - **See your whole archive together.** Scan multiple folders and browse them in a single library.
+- **Edit without replacing the originals.** Rotate freely or by 90°, crop with preset ratios, adjust brightness/contrast/saturation, and use grayscale, sepia, temperature or sharpness filters.
+- **Undo and redo edits.** Changes are reversible until the photo is closed or a new photo is opened.
+- **Export at full resolution.** Save the edited image as JPEG, PNG or TIFF while keeping the source file unchanged.
 - **Find photos by date.** Explore collapsed year and month sections using shooting or creation dates.
 - **Get a quick preview.** A local SQLite cache stores metadata and small thumbnails; the library loads thumbnail batches as you scroll.
 - **Correct a shooting timestamp.** Edit the EXIF shooting date and time, and Photo Snap updates its catalog entry. This operation writes the metadata to the original image file.
@@ -57,6 +60,7 @@ Useful shortcuts:
 | `Ctrl+Shift+B` | Open or close the library |
 | `←` / `→` | Previous or next photo in the current folder |
 | `Ctrl+C` | Copy selected library photos, or the current photo |
+| `Ctrl+Shift+E` | Export the current edited photo |
 | `Ctrl+R` | Rotate the current view |
 | `F` | Fit photo to window |
 | `1` | Show at actual size |
